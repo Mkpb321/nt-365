@@ -1,5 +1,4 @@
 :root{
-  /* Hintergrund: weiss */
   --bg: #ffffff;
 
   --text: #15132b;
@@ -9,13 +8,13 @@
   --border2: rgba(21,19,43,.22);
 
   --fill: rgba(21,19,43,.78);
-  --fillSoft: rgba(21,19,43,.28);
-
   --tap: rgba(21,19,43,.06);
 
-  --r: 10px;
-  --gap: 10px;
+  --r: 12px;
   --fs: 16px;
+
+  --gapYears: 10px;
+  --gapTiles: 6px;
 }
 
 *{ box-sizing: border-box; }
@@ -43,14 +42,9 @@ body{
   padding: 8px 2px 12px;
 }
 .brand{
-  font-weight: 850;
+  font-weight: 900;
   letter-spacing: .2px;
   font-size: 18px;
-}
-.subtitle{
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
 }
 
 .iconbtn{
@@ -67,31 +61,25 @@ body{
 }
 .iconbtn:active{ background: var(--tap); }
 
-.view{ padding-top: 8px; }
+.view{ padding-top: 6px; }
 .hidden{ display: none !important; }
 
-.sectionhead{
-  padding: 8px 2px 12px;
-}
+.sectionhead{ padding: 6px 2px 12px; }
 .sectionhead__title{
-  font-weight: 850;
+  font-weight: 900;
   font-size: 15px;
 }
-.sectionhead__hint{
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--muted);
-}
 
+/* YEARS */
 .years{
   display: grid;
-  gap: var(--gap);
+  gap: var(--gapYears);
 }
 
 .yearItem{
   width: 100%;
-  border: 1px solid var(--border2);
-  background: #fff;
+  border: 0;              /* keine Trennlinien */
+  background: #fff;       /* wird per JS eingefärbt */
   border-radius: var(--r);
   padding: 12px 12px;
   display: grid;
@@ -105,21 +93,21 @@ body{
   gap: 12px;
 }
 .yearLabel{
-  font-weight: 850;
+  font-weight: 900;
   letter-spacing: .2px;
   font-size: 16px;
 }
 .yearPct{
   font-variant-numeric: tabular-nums;
-  font-weight: 850;
-  color: var(--muted);
+  font-weight: 900;
+  color: rgba(21,19,43,.78);
 }
 
 .progressTrack{
   height: 10px;
   border-radius: 999px;
-  background: rgba(21,19,43,.08);
-  border: 1px solid var(--border);
+  background: rgba(255,255,255,.42);
+  border: 0;              /* keine Linien */
   overflow: hidden;
 }
 .progressFill{
@@ -128,13 +116,7 @@ body{
   background: var(--fill);
 }
 
-.footnote{
-  margin-top: 14px;
-  font-size: 12px;
-  color: var(--muted);
-  padding: 0 2px;
-}
-
+/* YEAR DETAIL HEADER */
 .navrow{
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -144,7 +126,7 @@ body{
 }
 .navrow__center{ text-align: center; }
 .navrow__title{
-  font-weight: 900;
+  font-weight: 950;
   letter-spacing: .2px;
 }
 .navrow__meta{
@@ -160,48 +142,37 @@ body{
   color: var(--text);
   border-radius: 999px;
   padding: 10px 12px;
-  font-weight: 800;
+  font-weight: 900;
 }
 .textbtn:active{ background: var(--tap); }
 
 .yearProgress{ padding: 0 2px 14px; }
 
-.groups{
-  display: grid;
-  gap: 12px; /* kompakter */
-  padding-bottom: 10px;
-}
-
-/* Untergruppen ohne Titel: nur dezente Trennlinie */
-.group{
-  border-top: 1px solid rgba(21,19,43,.10);
-  padding-top: 10px;
-}
-
-/* Bücher: platzsparender */
-.bookGrid{
+/* BOOK TILES: alle nebeneinander (ein Grid), Farbe wechselt nach Kategorie */
+.booksGrid{
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: var(--gapTiles);
+  padding-bottom: 10px;
 }
 @media (min-width: 420px){
-  .bookGrid{ grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .booksGrid{ grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (min-width: 520px){
-  .bookGrid{ grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .booksGrid{ grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
 
 .bookTile{
-  border: 1px solid var(--border2);
+  border: 0;               /* keine Trennlinien */
   border-radius: 12px;
   padding: 8px 8px 9px;
   text-align: left;
-  background: #fff; /* wird per Kategorie-Farbe überschrieben */
+  background: #fff;        /* wird per JS gesetzt */
 }
 .bookTile:active{ filter: brightness(0.98); }
 
 .bookName{
-  font-weight: 900;
+  font-weight: 950;
   font-size: 12px;
   letter-spacing: .12px;
   line-height: 1.15;
@@ -209,7 +180,7 @@ body{
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  min-height: 28px; /* stabil */
+  min-height: 28px;
 }
 .bookMetaRow{
   margin-top: 6px;
@@ -220,21 +191,21 @@ body{
 }
 .bookPct{
   font-size: 11px;
-  font-weight: 900;
-  color: rgba(21,19,43,.82);
+  font-weight: 950;
+  color: rgba(21,19,43,.84);
   font-variant-numeric: tabular-nums;
 }
 .bookCh{
   font-size: 11px;
-  color: var(--muted);
+  color: rgba(21,19,43,.70);
   font-variant-numeric: tabular-nums;
 }
 .bookBar{
   margin-top: 6px;
   height: 6px;
   border-radius: 999px;
-  background: rgba(255,255,255,.35);
-  border: 1px solid rgba(21,19,43,.12);
+  background: rgba(255,255,255,.42);
+  border: 0;               /* keine Linien */
   overflow: hidden;
 }
 .bookBarFill{
@@ -243,7 +214,7 @@ body{
   background: rgba(21,19,43,.55);
 }
 
-/* Overlay: nicht transparent (vollflächig weiss) */
+/* OVERLAY: vollflächig weiss */
 .overlay{
   position: fixed;
   inset: 0;
@@ -293,7 +264,7 @@ body{
   color: var(--text);
   border-radius: 999px;
   padding: 10px 12px;
-  font-weight: 900;
+  font-weight: 950;
 }
 .pill:active{ background: var(--tap); }
 

@@ -3,15 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>NT Bible Reading Tracker</title>
+  <title>NT 365</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="app" id="app">
     <header class="topbar">
       <div class="topbar__title">
-        <div class="brand">NT Reading Tracker</div>
-        <div class="subtitle" id="subtitle">Neues Testament · Kapitel abhaken</div>
+        <div class="brand">NT 365</div>
       </div>
       <button class="iconbtn" id="btnAddYear" aria-label="Jahr hinzufügen" title="Jahr hinzufügen">＋</button>
     </header>
@@ -20,14 +19,9 @@
     <main class="view" id="viewYears" aria-label="Jahresübersicht">
       <div class="sectionhead">
         <div class="sectionhead__title">Jahre</div>
-        <div class="sectionhead__hint">Tippe ein Jahr an, um Bücher & Kapitel zu sehen.</div>
       </div>
 
       <div class="years" id="yearsList"></div>
-
-      <div class="footnote">
-        Alles wird lokal im Browser gespeichert (localStorage).
-      </div>
     </main>
 
     <!-- VIEW: YEAR DETAIL -->
@@ -47,7 +41,7 @@
         </div>
       </div>
 
-      <div class="groups" id="groupsContainer"></div>
+      <div class="booksGrid" id="booksGrid"></div>
     </main>
 
     <!-- OVERLAY: BOOK CHAPTERS -->
