@@ -1,5 +1,5 @@
 (() => {
-  const STORAGE_KEY = "nt_reading_tracker_v1";
+  const STORAGE_KEY = "nt_reading_tracker_v2";
 
   // Neues Testament: Buch + Kapitelanzahl
   const BOOKS = [
@@ -43,17 +43,14 @@
 
   const GROUP_ORDER = ["Evangelien", "Geschichte", "Paulusbriefe", "Allgemeine Briefe", "Prophetie"];
 
-  // Pastel-Blockfarben (einfarbig, keine Verläufe) – rotiert über Bücher
-  const TILE_COLORS = [
-    "rgba(207,233,255,.22)",
-    "rgba(214,245,214,.22)",
-    "rgba(255,229,199,.22)",
-    "rgba(255,214,232,.22)",
-    "rgba(228,214,255,.22)",
-    "rgba(215,255,242,.22)",
-    "rgba(255,244,204,.22)",
-    "rgba(210,232,255,.22)",
-  ];
+  // Weniger bunt: 1 Pastellfarbe pro Kategorie (Untergruppe)
+  const GROUP_COLORS = {
+    "Evangelien": "rgba(205, 228, 255, .55)",        // pastel blau
+    "Geschichte": "rgba(209, 245, 224, .55)",        // pastel mint
+    "Paulusbriefe": "rgba(233, 220, 255, .55)",      // pastel violett
+    "Allgemeine Briefe": "rgba(255, 232, 210, .55)", // pastel apricot
+    "Prophetie": "rgba(255, 220, 236, .55)",         // pastel pink
+  };
 
   const $ = (sel) => document.querySelector(sel);
 
@@ -93,9 +90,6 @@
     });
 
     btnCloseOverlay.addEventListener("click", closeOverlay);
-    overlay.addEventListener("click", (e) => {
-      if (e.target === overlay) closeOverlay();
-    });
 
     chaptersGrid.addEventListener("click", (e) => {
       const tile = e.target.closest("[data-ch]");
@@ -220,23 +214,21 @@
 
       const groupEl = document.createElement("section");
       groupEl.className = "group";
-      groupEl.innerHTML = `
-        <div class="groupTitle">${groupName}</div>
-        <div class="bookGrid" data-group="${escapeHtml(groupName)}"></div>
-      `;
+      groupEl.innerHTML = `<div class="bookGrid" data-group="${escapeHtml(groupName)}"></div>`;
 
       const grid = groupEl.querySelector(".bookGrid");
 
-      books.forEach((b, idx) => {
+      books.forEach((b) => {
         const pct = Math.round(bookProgress(yearKey, b.id) * 100);
         const read = getReadSet(yearKey, b.id).size;
-        const color = TILE_COLORS[(BOOKS.findIndex(x => x.id === b.id)) % TILE_COLORS.length];
 
         const tile = document.createElement("button");
         tile.type = "button";
         tile.className = "bookTile";
         tile.dataset.book = b.id;
-        tile.style.background = color;
+
+        // 1 Farbe pro Kategorie
+        tile.style.background = GROUP_COLORS[b.group] || "rgba(230,230,230,.55)";
 
         tile.innerHTML = `
           <div class="bookName">${escapeHtml(b.name)}</div>
@@ -281,7 +273,6 @@
       tile.querySelector(".bookBarFill").style.width = `${pct}%`;
     });
 
-    // Keep year list up-to-date when going back
     saveState();
   }
 
@@ -348,7 +339,6 @@
     state.years = state.years || {};
     state.years[yearKey] = state.years[yearKey] || {};
     const arr = state.years[yearKey][bookId] || [];
-    // Normalisieren: unique ints 1..chapters
     const b = BOOKS.find(x => x.id === bookId);
     const max = b ? b.chapters : 9999;
     const s = new Set();
