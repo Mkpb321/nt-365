@@ -1,18 +1,14 @@
 (() => {
   const STORAGE_KEY = "nt_reading_tracker_v2";
 
-  // Neues Testament: Buch + Kapitelanzahl
   const BOOKS = [
-    // Evangelien
     { id: "mat", name: "Matthäus", chapters: 28, group: "Evangelien" },
     { id: "mar", name: "Markus", chapters: 16, group: "Evangelien" },
     { id: "luk", name: "Lukas", chapters: 24, group: "Evangelien" },
     { id: "joh", name: "Johannes", chapters: 21, group: "Evangelien" },
 
-    // Geschichte
     { id: "act", name: "Apostelgeschichte", chapters: 28, group: "Geschichte" },
 
-    // Paulusbriefe
     { id: "rom", name: "Römer", chapters: 16, group: "Paulusbriefe" },
     { id: "1co", name: "1. Korinther", chapters: 16, group: "Paulusbriefe" },
     { id: "2co", name: "2. Korinther", chapters: 13, group: "Paulusbriefe" },
@@ -27,7 +23,6 @@
     { id: "tit", name: "Titus", chapters: 3, group: "Paulusbriefe" },
     { id: "phm", name: "Philemon", chapters: 1, group: "Paulusbriefe" },
 
-    // Allgemeine Briefe
     { id: "heb", name: "Hebräer", chapters: 13, group: "Allgemeine Briefe" },
     { id: "jam", name: "Jakobus", chapters: 5, group: "Allgemeine Briefe" },
     { id: "1pe", name: "1. Petrus", chapters: 5, group: "Allgemeine Briefe" },
@@ -37,30 +32,64 @@
     { id: "3jo", name: "3. Johannes", chapters: 1, group: "Allgemeine Briefe" },
     { id: "jud", name: "Judas", chapters: 1, group: "Allgemeine Briefe" },
 
-    // Prophetie
     { id: "rev", name: "Offenbarung", chapters: 22, group: "Prophetie" },
   ];
 
-  const GROUP_ORDER = ["Evangelien", "Geschichte", "Paulusbriefe", "Allgemeine Briefe", "Prophetie"];
-
-  // 1 Pastellfarbe pro Kategorie (Bücher)
-  const GROUP_COLORS = {
-    "Evangelien": "rgba(205, 228, 255, .70)",        // pastel blau
-    "Geschichte": "rgba(209, 245, 224, .70)",        // pastel mint
-    "Paulusbriefe": "rgba(233, 220, 255, .70)",      // pastel violett
-    "Allgemeine Briefe": "rgba(255, 232, 210, .70)", // pastel apricot
-    "Prophetie": "rgba(255, 220, 236, .70)",         // pastel pink
+  const BOOK_SHORT = {
+    mat: "Mt",
+    mar: "Mk",
+    luk: "Lk",
+    joh: "Joh",
+    act: "Apg",
+    rom: "Röm",
+    "1co": "1. Kor",
+    "2co": "2. Kor",
+    gal: "Gal",
+    eph: "Eph",
+    phi: "Phil",
+    col: "Kol",
+    "1th": "1. Thess",
+    "2th": "2. Thess",
+    "1ti": "1. Tim",
+    "2ti": "2. Tim",
+    tit: "Tit",
+    phm: "Phlm",
+    heb: "Hebr",
+    jam: "Jak",
+    "1pe": "1. Petr",
+    "2pe": "2. Petr",
+    "1jo": "1. Joh",
+    "2jo": "2. Joh",
+    "3jo": "3. Joh",
+    jud: "Jud",
+    rev: "Offb",
   };
 
-  // Jahre ebenfalls farbig (rotierend)
-  const YEAR_COLORS = [
-    "rgba(205, 228, 255, .75)",
-    "rgba(209, 245, 224, .75)",
-    "rgba(233, 220, 255, .75)",
-    "rgba(255, 232, 210, .75)",
-    "rgba(255, 220, 236, .75)",
-    "rgba(225, 235, 255, .75)",
+  const GROUP_ORDER = ["Evangelien", "Geschichte", "Paulusbriefe", "Allgemeine Briefe", "Prophetie"];
+
+  // RGB pro Kategorie → Strong/Soft via Alpha
+  const GROUP_RGB = {
+    "Evangelien": [205, 228, 255],
+    "Geschichte": [209, 245, 224],
+    "Paulusbriefe": [233, 220, 255],
+    "Allgemeine Briefe": [255, 232, 210],
+    "Prophetie": [255, 220, 236],
+  };
+
+  // Jahre farbig (rotierend)
+  const YEAR_RGB = [
+    [205, 228, 255],
+    [209, 245, 224],
+    [233, 220, 255],
+    [255, 232, 210],
+    [255, 220, 236],
+    [225, 235, 255],
   ];
+
+  const STRONG_A = 0.78;
+  const SOFT_A = 0.20;
+  const CH_STRONG_A = 0.78;
+  const CH_SOFT_A = 0.14;
 
   const $ = (sel) => document.querySelector(sel);
 
@@ -72,7 +101,6 @@
 
   const yearTitle = $("#yearTitle");
   const yearMeta = $("#yearMeta");
-  const yearProgressFill = $("#yearProgressFill");
   const booksGrid = $("#booksGrid");
 
   const overlay = $("#overlay");
@@ -127,21 +155,21 @@
     showYears();
   }
 
+  function rgba([r,g,b], a) {
+    return `rgba(${r}, ${g}, ${b}, ${a})`;
+  }
+
   function ensureDefaultYears() {
     if (!state.yearsOrder || !Array.isArray(state.yearsOrder) || state.yearsOrder.length === 0) {
       const now = new Date();
       const y = now.getFullYear();
       state.yearsOrder = [y - 2, y - 1, y, y + 1, y + 2];
       state.years = state.years || {};
-      for (const yy of state.yearsOrder) {
-        state.years[String(yy)] = state.years[String(yy)] || {};
-      }
+      for (const yy of state.yearsOrder) state.years[String(yy)] = state.years[String(yy)] || {};
       saveState();
     } else {
       state.years = state.years || {};
-      for (const yy of state.yearsOrder) {
-        state.years[String(yy)] = state.years[String(yy)] || {};
-      }
+      for (const yy of state.yearsOrder) state.years[String(yy)] = state.years[String(yy)] || {};
       saveState();
     }
   }
@@ -195,21 +223,28 @@
     const years = (state.yearsOrder || []).slice().sort((a, b) => a - b);
 
     years.forEach((y, idx) => {
-      const pct = Math.round(yearProgress(String(y)) * 100);
-      const btn = document.createElement("button");
-      btn.className = "yearItem";
-      btn.type = "button";
+      const progress = yearProgress(String(y));
+      const pct = Math.round(progress * 100);
 
-      // Jahre farbig
-      btn.style.background = YEAR_COLORS[idx % YEAR_COLORS.length];
+      const rgb = YEAR_RGB[idx % YEAR_RGB.length];
+      const fillStrong = rgba(rgb, STRONG_A);
+      const fillSoft = rgba(rgb, SOFT_A);
+
+      const btn = document.createElement("button");
+      btn.className = "yearItem tile";
+      btn.type = "button";
+      btn.style.setProperty("--fillPct", `${pct}%`);
+      btn.style.setProperty("--fillStrong", fillStrong);
+      btn.style.setProperty("--fillSoft", fillSoft);
 
       btn.innerHTML = `
-        <div class="yearTop">
-          <div class="yearLabel">${y}</div>
-          <div class="yearPct">${pct}%</div>
-        </div>
-        <div class="progressTrack" aria-hidden="true">
-          <div class="progressFill" style="width:${pct}%"></div>
+        <div class="tileBase" aria-hidden="true"></div>
+        <div class="tileFill" aria-hidden="true"></div>
+        <div class="tileContent">
+          <div class="yearTop">
+            <div class="yearLabel">${y}</div>
+            <div class="yearPct">${pct}%</div>
+          </div>
         </div>
       `;
       btn.addEventListener("click", () => showYear(y));
@@ -219,65 +254,61 @@
 
   function renderYear(yearKey) {
     yearTitle.textContent = yearKey;
+
+    const yp = Math.round(yearProgress(yearKey) * 100);
+    yearMeta.textContent = `${yp}%`;
+
     booksGrid.innerHTML = "";
 
-    // Alle Bücher in einem Grid, in Gruppenreihenfolge (Farbe wechselt, wenn Gruppe wechselt)
+    // Alle Bücher in einem Grid, in Gruppenreihenfolge
     const orderedBooks = [];
     for (const groupName of GROUP_ORDER) {
-      for (const b of BOOKS) {
-        if (b.group === groupName) orderedBooks.push(b);
-      }
+      for (const b of BOOKS) if (b.group === groupName) orderedBooks.push(b);
     }
 
     orderedBooks.forEach((b) => {
-      const pct = Math.round(bookProgress(yearKey, b.id) * 100);
-      const read = getReadSet(yearKey, b.id).size;
+      const progress = bookProgress(yearKey, b.id);
+      const pct = Math.round(progress * 100);
+
+      const rgb = GROUP_RGB[b.group] || [230, 230, 230];
+      const fillStrong = rgba(rgb, STRONG_A);
+      const fillSoft = rgba(rgb, SOFT_A);
 
       const tile = document.createElement("button");
       tile.type = "button";
-      tile.className = "bookTile";
+      tile.className = "bookTile tile";
       tile.dataset.book = b.id;
+      tile.style.setProperty("--fillPct", `${pct}%`);
+      tile.style.setProperty("--fillStrong", fillStrong);
+      tile.style.setProperty("--fillSoft", fillSoft);
 
-      tile.style.background = GROUP_COLORS[b.group] || "rgba(230,230,230,.70)";
+      const shortLabel = BOOK_SHORT[b.id] || b.name;
 
       tile.innerHTML = `
-        <div class="bookName">${escapeHtml(b.name)}</div>
-        <div class="bookMetaRow">
-          <div class="bookPct">${pct}%</div>
-          <div class="bookCh">${read}/${b.chapters}</div>
-        </div>
-        <div class="bookBar" aria-hidden="true">
-          <div class="bookBarFill" style="width:${pct}%"></div>
+        <div class="tileBase" aria-hidden="true"></div>
+        <div class="tileFill" aria-hidden="true"></div>
+        <div class="tileContent">
+          <div class="bookShort">${escapeHtml(shortLabel)}</div>
         </div>
       `;
 
       tile.addEventListener("click", () => openBook(b.id));
       booksGrid.appendChild(tile);
     });
-
-    updateYearUI();
   }
 
   function updateYearUI() {
     if (!currentYear) return;
 
     const yp = Math.round(yearProgress(currentYear) * 100);
-    yearMeta.textContent = `${yp}% gelesen`;
-    yearProgressFill.style.width = `${yp}%`;
+    yearMeta.textContent = `${yp}%`;
 
-    // Update book tiles in the year view
+    // Update book tiles fill width
     const tiles = booksGrid.querySelectorAll(".bookTile");
     tiles.forEach(tile => {
       const bookId = tile.dataset.book;
-      const b = BOOKS.find(x => x.id === bookId);
-      if (!b) return;
-
       const pct = Math.round(bookProgress(currentYear, bookId) * 100);
-      const read = getReadSet(currentYear, bookId).size;
-
-      tile.querySelector(".bookPct").textContent = `${pct}%`;
-      tile.querySelector(".bookCh").textContent = `${read}/${b.chapters}`;
-      tile.querySelector(".bookBarFill").style.width = `${pct}%`;
+      tile.style.setProperty("--fillPct", `${pct}%`);
     });
 
     saveState();
@@ -289,6 +320,10 @@
     const b = BOOKS.find(x => x.id === currentBookId);
     overlayBookTitle.textContent = b ? b.name : "Buch";
 
+    const rgb = b ? (GROUP_RGB[b.group] || [230,230,230]) : [230,230,230];
+    const chStrong = rgba(rgb, CH_STRONG_A);
+    const chSoft = rgba(rgb, CH_SOFT_A);
+
     chaptersGrid.innerHTML = "";
     const readSet = getReadSet(currentYear, currentBookId);
 
@@ -299,6 +334,8 @@
       t.className = "chapterTile" + (readSet.has(ch) ? " read" : "");
       t.dataset.ch = String(ch);
       t.textContent = String(ch);
+      t.style.setProperty("--chSoft", chSoft);
+      t.style.setProperty("--chStrong", chStrong);
       chaptersGrid.appendChild(t);
     }
 
@@ -312,7 +349,7 @@
     const read = getReadSet(currentYear, currentBookId).size;
     const pct = Math.round((read / b.chapters) * 100);
 
-    overlayBookMeta.textContent = `${pct}% · ${read}/${b.chapters} Kapitel`;
+    overlayBookMeta.textContent = `${pct}% · ${read}/${b.chapters}`;
 
     const readSet = getReadSet(currentYear, currentBookId);
     chaptersGrid.querySelectorAll(".chapterTile").forEach(tile => {
@@ -324,9 +361,7 @@
   function yearProgress(yearKey) {
     const total = totalChapters();
     let read = 0;
-    for (const b of BOOKS) {
-      read += getReadSet(yearKey, b.id).size;
-    }
+    for (const b of BOOKS) read += getReadSet(yearKey, b.id).size;
     return total === 0 ? 0 : read / total;
   }
 
