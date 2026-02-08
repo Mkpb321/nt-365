@@ -34,25 +34,24 @@
       <div class="booksGrid" id="booksGrid"></div>
     </main>
 
-    <!-- OVERLAY: BOOK CHAPTERS -->
-    <div class="overlay hidden" id="overlay" role="dialog" aria-modal="true" aria-label="Kapitel auswählen">
-      <div class="overlay__panel" role="document">
-        <div class="overlay__top">
-          <button class="textbtn" id="btnCloseOverlay" aria-label="Overlay schließen">✕ Schließen</button>
-          <div class="overlay__titlewrap">
-            <div class="overlay__title" id="overlayBookTitle">Buch</div>
-            <div class="overlay__meta" id="overlayBookMeta">0%</div>
-          </div>
+    <!-- VIEW: BOOK CHAPTERS (same layout style as other views) -->
+    <main class="view hidden" id="viewBook" aria-label="Buch-Detail">
+      <div class="navrow">
+        <button class="textbtn" id="btnBackToYear" aria-label="Zurück">← Zurück</button>
+        <div class="navrow__center">
+          <div class="navrow__title" id="bookTitle">Buch</div>
+          <div class="navrow__meta" id="bookMeta">0%</div>
         </div>
-
-        <div class="overlay__actions">
-          <button class="pill" id="btnMarkAll">Alle</button>
-          <button class="pill" id="btnMarkNone">Keine</button>
-        </div>
-
-        <div class="chapters" id="chaptersGrid" aria-label="Kapitel"></div>
+        <div class="navrow__spacer"></div>
       </div>
-    </div>
+
+      <div class="actionsRow">
+        <button class="pill" id="btnMarkAll">Alle</button>
+        <button class="pill" id="btnMarkNone">Keine</button>
+      </div>
+
+      <div class="chapters" id="chaptersGrid" aria-label="Kapitel"></div>
+    </main>
   </div>
 
   <script src="app.js"></script>

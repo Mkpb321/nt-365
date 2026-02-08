@@ -67,7 +67,6 @@
 
   const GROUP_ORDER = ["Evangelien", "Geschichte", "Paulusbriefe", "Allgemeine Briefe", "Prophetie"];
 
-  // RGB pro Kategorie → Strong/Soft via Alpha
   const GROUP_RGB = {
     "Evangelien": [205, 228, 255],
     "Geschichte": [209, 245, 224],
@@ -76,7 +75,6 @@
     "Prophetie": [255, 220, 236],
   };
 
-  // Jahre farbig (rotierend)
   const YEAR_RGB = [
     [205, 228, 255],
     [209, 245, 224],
@@ -86,27 +84,26 @@
     [225, 235, 255],
   ];
 
-  const STRONG_A = 0.95;
-  const SOFT_A = 0.10;
-  const CH_STRONG_A = 0.95;
-  const CH_SOFT_A = 0.10;
+  const STRONG_A = 0.95; // gelesen
+  const SOFT_A = 0.10;   // ungelesen
 
   const $ = (sel) => document.querySelector(sel);
 
-  const elYearsList = $("#yearsList");
   const viewYears = $("#viewYears");
   const viewYear = $("#viewYear");
-  const btnAddYear = $("#btnAddYear");
-  const btnBackToYears = $("#btnBackToYears");
+  const viewBook = $("#viewBook");
 
+  const elYearsList = $("#yearsList");
+  const btnAddYear = $("#btnAddYear");
+
+  const btnBackToYears = $("#btnBackToYears");
   const yearTitle = $("#yearTitle");
   const yearMeta = $("#yearMeta");
   const booksGrid = $("#booksGrid");
 
-  const overlay = $("#overlay");
-  const btnCloseOverlay = $("#btnCloseOverlay");
-  const overlayBookTitle = $("#overlayBookTitle");
-  const overlayBookMeta = $("#overlayBookMeta");
+  const btnBackToYear = $("#btnBackToYear");
+  const bookTitle = $("#bookTitle");
+  const bookMeta = $("#bookMeta");
   const chaptersGrid = $("#chaptersGrid");
   const btnMarkAll = $("#btnMarkAll");
   const btnMarkNone = $("#btnMarkNone");
@@ -122,33 +119,37 @@
     renderYears();
 
     btnAddYear.addEventListener("click", addYearFlow);
+
     btnBackToYears.addEventListener("click", () => {
       currentYear = null;
       showYears();
     });
 
-    btnCloseOverlay.addEventListener("click", closeOverlay);
+    btnBackToYear.addEventListener("click", () => {
+      currentBookId = null;
+      showYear(currentYear);
+    });
 
     chaptersGrid.addEventListener("click", (e) => {
       const tile = e.target.closest("[data-ch]");
       if (!tile || !currentYear || !currentBookId) return;
       const ch = Number(tile.dataset.ch);
       toggleChapter(currentYear, currentBookId, ch);
-      updateOverlayUI();
+      updateBookUI();
       updateYearUI();
     });
 
     btnMarkAll.addEventListener("click", () => {
       if (!currentYear || !currentBookId) return;
       markAllChapters(currentYear, currentBookId);
-      updateOverlayUI();
+      updateBookUI();
       updateYearUI();
     });
 
     btnMarkNone.addEventListener("click", () => {
       if (!currentYear || !currentBookId) return;
       clearAllChapters(currentYear, currentBookId);
-      updateOverlayUI();
+      updateBookUI();
       updateYearUI();
     });
 
@@ -194,28 +195,26 @@
 
   function showYears() {
     viewYear.classList.add("hidden");
+    viewBook.classList.add("hidden");
     viewYears.classList.remove("hidden");
     renderYears();
   }
 
   function showYear(y) {
+    if (!y) return showYears();
     currentYear = String(y);
     viewYears.classList.add("hidden");
+    viewBook.classList.add("hidden");
     viewYear.classList.remove("hidden");
     renderYear(currentYear);
   }
 
-  function openBook(bookId) {
+  function showBook(bookId) {
     currentBookId = bookId;
-    overlay.classList.remove("hidden");
-    document.body.style.overflow = "hidden";
-    renderOverlay();
-  }
-
-  function closeOverlay() {
-    overlay.classList.add("hidden");
-    document.body.style.overflow = "";
-    currentBookId = null;
+    viewYear.classList.add("hidden");
+    viewYears.classList.add("hidden");
+    viewBook.classList.remove("hidden");
+    renderBook();
   }
 
   function renderYears() {
@@ -260,7 +259,6 @@
 
     booksGrid.innerHTML = "";
 
-    // Alle Bücher in einem Grid, in Gruppenreihenfolge
     const orderedBooks = [];
     for (const groupName of GROUP_ORDER) {
       for (const b of BOOKS) if (b.group === groupName) orderedBooks.push(b);
@@ -292,7 +290,7 @@
         </div>
       `;
 
-      tile.addEventListener("click", () => openBook(b.id));
+      tile.addEventListener("click", () => showBook(b.id));
       booksGrid.appendChild(tile);
     });
   }
@@ -303,7 +301,6 @@
     const yp = Math.round(yearProgress(currentYear) * 100);
     yearMeta.textContent = `${yp}%`;
 
-    // Update book tiles fill width
     const tiles = booksGrid.querySelectorAll(".bookTile");
     tiles.forEach(tile => {
       const bookId = tile.dataset.book;
@@ -314,15 +311,18 @@
     saveState();
   }
 
-  function renderOverlay() {
+  function renderBook() {
     if (!currentYear || !currentBookId) return;
 
     const b = BOOKS.find(x => x.id === currentBookId);
-    overlayBookTitle.textContent = b ? b.name : "Buch";
+    bookTitle.textContent = b ? b.name : "Buch";
 
     const rgb = b ? (GROUP_RGB[b.group] || [230,230,230]) : [230,230,230];
     const chStrong = rgba(rgb, STRONG_A);
     const chSoft = rgba(rgb, SOFT_A);
+
+    chaptersGrid.style.setProperty("--chSoft", chSoft);
+    chaptersGrid.style.setProperty("--chStrong", chStrong);
 
     chaptersGrid.innerHTML = "";
     const readSet = getReadSet(currentYear, currentBookId);
@@ -334,22 +334,20 @@
       t.className = "chapterTile" + (readSet.has(ch) ? " read" : "");
       t.dataset.ch = String(ch);
       t.textContent = String(ch);
-      t.style.setProperty("--chSoft", chSoft);
-      t.style.setProperty("--chStrong", chStrong);
       chaptersGrid.appendChild(t);
     }
 
-    updateOverlayUI();
+    updateBookUI();
   }
 
-  function updateOverlayUI() {
+  function updateBookUI() {
     if (!currentYear || !currentBookId) return;
 
     const b = BOOKS.find(x => x.id === currentBookId);
     const read = getReadSet(currentYear, currentBookId).size;
     const pct = Math.round((read / b.chapters) * 100);
 
-    overlayBookMeta.textContent = `${pct}% · ${read}/${b.chapters}`;
+    bookMeta.textContent = `${pct}% · ${read}/${b.chapters}`;
 
     const readSet = getReadSet(currentYear, currentBookId);
     chaptersGrid.querySelectorAll(".chapterTile").forEach(tile => {
