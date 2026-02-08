@@ -84,8 +84,8 @@
     [225, 235, 255],
   ];
 
-  const STRONG_A = 0.95; // gelesen
-  const SOFT_A = 0.10;   // ungelesen
+  const STRONG_A = 1; // gelesen
+  const SOFT_A = 0.35;   // ungelesen
 
   const $ = (sel) => document.querySelector(sel);
 
