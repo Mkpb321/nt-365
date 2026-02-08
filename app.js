@@ -321,8 +321,8 @@
     overlayBookTitle.textContent = b ? b.name : "Buch";
 
     const rgb = b ? (GROUP_RGB[b.group] || [230,230,230]) : [230,230,230];
-    const chStrong = rgba(rgb, CH_STRONG_A);
-    const chSoft = rgba(rgb, CH_SOFT_A);
+    const chStrong = rgba(rgb, STRONG_A);
+    const chSoft = rgba(rgb, SOFT_A);
 
     chaptersGrid.innerHTML = "";
     const readSet = getReadSet(currentYear, currentBookId);

@@ -1,2 +1,9 @@
+login hinzufügen
+
+daten von was abgekreuzt in forestore aber was man gerade offen hat wird in browser persistiert
+es soll auch nur jahre haben die im firestore hinterlegt sind 
+
+
+
 Ich möchte, dass du die nachfolgend beschriebenen Änderungen am bestehenden Code vornimmst. Der vollständige Quellcode der Anwendung ist bereits beigefügt. Bitte implementiere alle Änderungen korrekt und konsistent und gib mir anschließend sämtliche Dateien vollständig als ZIP-Download zurück. Zusätzlich erwarte ich eine prägnante, einzeilige Commit-Message sowie eine nachvollziehbare Erklärung der vorgenommenen Änderungen. Ich werde dir danach weitere Änderungen schicken. Die sollst du immer am aktuellsten code vornehmen. Also dem letzten, dem du mir geschickt hast. und jeweils wieder sämtliche Dateien vollständig als ZIP-Download zurück geben.
 Änderungen:
