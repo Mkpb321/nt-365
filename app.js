@@ -86,10 +86,10 @@
     [225, 235, 255],
   ];
 
-  const STRONG_A = 0.78;
-  const SOFT_A = 0.20;
-  const CH_STRONG_A = 0.78;
-  const CH_SOFT_A = 0.14;
+  const STRONG_A = 0.92;
+  const SOFT_A = 0.34;
+  const CH_STRONG_A = 0.90;
+  const CH_SOFT_A = 0.26;
 
   const $ = (sel) => document.querySelector(sel);
 

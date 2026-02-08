@@ -181,6 +181,7 @@ body{
 
 /* OVERLAY: vollflächig weiss */
 .overlay{
+  z-index: 999;
   position: fixed;
   inset: 0;
   background: #fff;
