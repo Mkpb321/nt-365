@@ -152,15 +152,15 @@
 
     updateTopbar();
   }
-
   function updateTopbar() {
     // Title always "NT 365"
     topTitle.textContent = "NT 365";
 
-    // Default: years overview -> transparent bar
+    // Defaults: years overview -> transparent bar
     let pct = 0;
     let barStrong = "transparent";
     let barSoft = "transparent";
+    let btnYearSoft = "transparent";
     topSub.textContent = "";
 
     if (currentView === "year" && currentYear) {
@@ -170,6 +170,7 @@
       pct = yPct;
       barStrong = rgba(rgb, STRONG_A);
       barSoft = rgba(rgb, SOFT_A);
+      btnYearSoft = barSoft;
       topSub.textContent = `${currentYear} · ${doneBooks}/27 · ${yPct}%`;
     } else if (currentView === "book" && currentYear && currentBookId) {
       const b = BOOKS.find(x => x.id === currentBookId);
@@ -182,12 +183,26 @@
       pct = bPct;
       barStrong = rgba(rgb, STRONG_A);
       barSoft = rgba(rgb, SOFT_A);
+      btnYearSoft = barSoft;
       topSub.textContent = `${currentYear} · ${short} · ${read}/${total} · ${bPct}%`;
+    }
+
+    // + Button color (years view only): last clicked year in SOFT
+    let addSoft = "transparent";
+    if (currentView === "years") {
+      const y = state.lastYear ? Number(state.lastYear) : null;
+      if (Number.isFinite(y)) {
+        addSoft = rgba(yearRgbFor(y), SOFT_A);
+      } else {
+        addSoft = "var(--btnBg)";
+      }
     }
 
     topbar.style.setProperty("--barStrong", barStrong);
     topbar.style.setProperty("--barSoft", barSoft);
     topbar.style.setProperty("--barPct", `${pct}%`);
+    topbar.style.setProperty("--btnYearSoft", btnYearSoft);
+    topbar.style.setProperty("--addSoft", addSoft);
   }
   function goBack() {
     if (currentView === "book") {
@@ -281,6 +296,8 @@
   function showYear(y) {
     currentYear = String(y);
     currentBookId = null;
+    state.lastYear = currentYear;
+    saveState();
     setView("year");
     renderYear(currentYear);
   }
@@ -493,14 +510,15 @@
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return { yearsOrder: [], years: {} };
+      if (!raw) return { yearsOrder: [], years: {}, lastYear: null };
       const obj = JSON.parse(raw);
       return {
         yearsOrder: Array.isArray(obj.yearsOrder) ? obj.yearsOrder : [],
-        years: obj.years && typeof obj.years === "object" ? obj.years : {}
+        years: obj.years && typeof obj.years === "object" ? obj.years : {},
+        lastYear: typeof obj.lastYear === "string" ? obj.lastYear : (Number.isFinite(obj.lastYear) ? String(obj.lastYear) : null)
       };
     } catch {
-      return { yearsOrder: [], years: {} };
+      return { yearsOrder: [], years: {}, lastYear: null };
     }
   }
 
