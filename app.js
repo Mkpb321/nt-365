@@ -13,7 +13,6 @@ import {
   setDoc,
   updateDoc,
   onSnapshot,
-  writeBatch,
   serverTimestamp,
   arrayUnion,
   arrayRemove
@@ -28,7 +27,6 @@ import {
 
 const ROOT_COLLECTION = "nt-365";
 const UI_STORAGE_KEY = "nt365_ui_v1";
-const LEGACY_STORAGE_KEY = "nt_reading_tracker_v2"; // previous local-only progress (optional migration)
 
 // Firebase configuration (provided)
 const firebaseConfig = {
@@ -309,16 +307,6 @@ function subscribeYears(uid) {
       yearsOrder.sort((a, b) => a - b);
       remote = { yearsOrder, years };
 
-      // Optional: migrate legacy local progress once (only if Firestore is empty)
-      if (!ui.legacyMigrated && remote.yearsOrder.length === 0) {
-        const migrated = await maybeMigrateLegacyLocal(uid);
-        if (migrated) {
-          ui.legacyMigrated = true;
-          saveUiState();
-          return; // next snapshot will include migrated data
-        }
-      }
-
       // If currentYear was deleted remotely -> go back to years
       if (currentYear && !remote.years[currentYear]) {
         currentYear = null;
@@ -340,44 +328,6 @@ function subscribeYears(uid) {
       refreshCurrentView();
     }
   );
-}
-
-async function maybeMigrateLegacyLocal(uid) {
-  try {
-    const legacy = loadLegacyProgress();
-    const hasLegacyYears =
-      legacy &&
-      legacy.years &&
-      typeof legacy.years === "object" &&
-      Object.keys(legacy.years).length > 0;
-
-    if (!hasLegacyYears) return false;
-
-    const batch = writeBatch(db);
-    const yearKeys = Object.keys(legacy.years);
-
-    for (const yearKey of yearKeys) {
-      const yNum = Number(yearKey);
-      if (!Number.isFinite(yNum)) continue;
-
-      const books = legacy.years[yearKey] && typeof legacy.years[yearKey] === "object"
-        ? legacy.years[yearKey]
-        : {};
-
-      batch.set(yearDocRef(uid, yearKey), {
-        year: yNum,
-        books,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      }, { merge: false });
-    }
-
-    await batch.commit();
-    return true;
-  } catch (e) {
-    console.warn("Legacy migration failed (ignored):", e);
-    return false;
-  }
 }
 
 function refreshCurrentView() {
@@ -858,7 +808,6 @@ function loadUiState() {
       currentYear: null,
       currentBookId: null,
       lastYear: null,
-      legacyMigrated: false
     };
     const obj = JSON.parse(raw);
     return {
@@ -870,7 +819,6 @@ function loadUiState() {
       lastYear: (obj && (typeof obj.lastYear === "string" || typeof obj.lastYear === "number"))
         ? String(obj.lastYear)
         : null,
-      legacyMigrated: !!(obj && obj.legacyMigrated)
     };
   } catch {
     return {
@@ -878,27 +826,12 @@ function loadUiState() {
       currentYear: null,
       currentBookId: null,
       lastYear: null,
-      legacyMigrated: false
     };
   }
 }
 
 function saveUiState() {
   localStorage.setItem(UI_STORAGE_KEY, JSON.stringify(ui));
-}
-
-function loadLegacyProgress() {
-  try {
-    const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
-    if (!raw) return null;
-    const obj = JSON.parse(raw);
-    return {
-      yearsOrder: Array.isArray(obj.yearsOrder) ? obj.yearsOrder : [],
-      years: obj.years && typeof obj.years === "object" ? obj.years : {}
-    };
-  } catch {
-    return null;
-  }
 }
 
 function escapeHtml(s) {
