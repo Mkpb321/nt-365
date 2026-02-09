@@ -2,9 +2,10 @@
   --bg: #ffffff;
 
   --text: #15132b;
-  --muted: rgba(21,19,43,.72);
+  --muted: rgba(21,19,43,.70);
 
-  --border2: rgba(21,19,43,.22);
+  /* button-only color */
+  --btnBg: #ece8ff;
 
   --tap: rgba(21,19,43,.06);
 
@@ -17,6 +18,9 @@
 
 *{ box-sizing: border-box; }
 html, body{ height: 100%; }
+html{
+  -webkit-text-size-adjust: 100%;
+}
 body{
   margin: 0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
@@ -24,9 +28,10 @@ body{
   color: var(--text);
   background: var(--bg);
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation; /* best-effort: disable double-tap zoom */
 }
 
-/* Normalize iOS button tinting (blue text) */
+/* Normalize iOS button tinting + remove default button styling */
 button{
   font: inherit;
   color: inherit;
@@ -35,60 +40,75 @@ button{
   background: none;
   border: none;
   padding: 0;
+  touch-action: manipulation;
 }
 
 .app{
   max-width: 560px;
   margin: 0 auto;
-  padding: 14px 14px 22px;
+  padding: 8px 14px 22px;
 }
 
+/* Compact topbar */
 .topbar{
-  display: flex;
+  display: grid;
+  grid-template-columns: 40px 1fr 40px;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 2px 12px;
+  gap: 8px;
+  padding: 6px 0 10px;
 }
-.brand{
-  font-weight: 900;
+.topcenter{
+  text-align: center;
+  min-width: 0;
+}
+.topTitle{
+  font-weight: 950;
   letter-spacing: .2px;
-  font-size: 18px;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topTitle .meta{
+  font-weight: 800;
+  color: var(--muted);
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
 }
 
-.iconbtn{
-  border: 1px solid var(--border2);
-  background: #fff;
+.topbtn{
+  width: 40px;
+  height: 30px;
   border-radius: 999px;
-  width: 42px;
-  height: 42px;
-  font-size: 22px;
-  line-height: 0;
+  background: var(--btnBg);
   display: grid;
   place-items: center;
+  font-weight: 950;
+  line-height: 0;
 }
-.iconbtn:active{ background: var(--tap); }
+.topbtn:active{ background: var(--tap); }
 
-.view{ padding-top: 6px; }
 .hidden{ display: none !important; }
+.view{ padding-top: 6px; }
 
 /* Shared "tile-as-progress" */
 .tile{
   position: relative;
   overflow: hidden;
   border-radius: var(--r);
+  touch-action: manipulation;
 }
 .tileFill{
   position: absolute;
   inset: 0 auto 0 0;
   width: var(--fillPct, 0%);
-  background: var(--fillStrong, rgba(200,200,200,.95));
+  background: var(--fillStrong, rgba(200,200,200,1));
   pointer-events: none;
 }
 .tileBase{
   position: absolute;
   inset: 0;
-  background: var(--fillSoft, rgba(200,200,200,.10));
+  background: var(--fillSoft, rgba(200,200,200,.35));
   pointer-events: none;
 }
 .tileContent{
@@ -117,6 +137,7 @@ button{
   font-weight: 950;
   letter-spacing: .2px;
   font-size: 16px;
+  color: var(--text);
 }
 .yearPct{
   font-variant-numeric: tabular-nums;
@@ -124,36 +145,7 @@ button{
   color: rgba(21,19,43,.78);
 }
 
-/* NAV ROW (used for Year + Book views) */
-.navrow{
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 10px;
-  padding: 2px 2px 10px;
-}
-.navrow__center{ text-align: center; }
-.navrow__title{
-  font-weight: 950;
-  letter-spacing: .2px;
-}
-.navrow__meta{
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--muted);
-}
-.navrow__spacer{ width: 72px; }
-
-.textbtn{
-  border: 1px solid var(--border2);
-  background: #fff;
-  border-radius: 999px;
-  padding: 10px 12px;
-  font-weight: 950;
-}
-.textbtn:active{ background: var(--tap); }
-
-/* BOOK TILES: only abbreviation, tile shows progress */
+/* BOOK TILES */
 .booksGrid{
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -185,27 +177,31 @@ button{
   text-overflow: ellipsis;
 }
 
-/* Actions row (Alle/Keine) same style language as other views */
+/* Actions row (Alle/Keine) */
 .actionsRow{
   display: flex;
   gap: 10px;
-  padding: 0 2px 10px;
+  padding: 10px 2px 0;
 }
+.bottomActions{
+  padding-top: 10px;
+  padding-bottom: 0;
+}
+
 .pill{
-  border: 1px solid var(--border2);
-  background: #fff;
+  background: var(--btnBg);
   border-radius: 999px;
-  padding: 10px 12px;
+  padding: 7px 10px; /* smaller, font-size stays */
   font-weight: 950;
 }
 .pill:active{ background: var(--tap); }
 
-/* Chapters: inherit book tint, no border. Unread == same as tileBase. Read == same as tileFill */
+/* Chapters */
 .chapters{
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
-  padding-bottom: 12px;
+  padding-bottom: 0;
 }
 @media (min-width: 420px){
   .chapters{ grid-template-columns: repeat(8, minmax(0, 1fr)); }
@@ -213,7 +209,7 @@ button{
 
 .chapterTile{
   border: 0;
-  background: var(--chSoft, rgba(200,200,200,.10));
+  background: var(--chSoft, rgba(200,200,200,.35));
   border-radius: 12px;
   height: 44px;
   display: grid;
@@ -221,9 +217,10 @@ button{
   font-weight: 950;
   font-variant-numeric: tabular-nums;
   user-select: none;
+  touch-action: manipulation;
 }
 .chapterTile:active{ filter: brightness(0.985); }
 
 .chapterTile.read{
-  background: var(--chStrong, rgba(200,200,200,.95));
+  background: var(--chStrong, rgba(200,200,200,1));
 }
