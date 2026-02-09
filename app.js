@@ -67,7 +67,7 @@
 
   const GROUP_ORDER = ["Evangelien", "Geschichte", "Paulusbriefe", "Allgemeine Briefe", "Prophetie"];
 
-  // Intensivere RGBs (direkt hier geändert)
+  // Intensivere RGBs (direkt geändert)
   const GROUP_RGB = {
     "Evangelien": [140, 192, 255],
     "Geschichte": [122, 230, 185],
@@ -76,32 +76,16 @@
     "Prophetie": [255, 145, 195],
   };
 
-  // Intensivere Palette für Jahre
-  const YEAR_RGB = [
-    [140, 192, 255],
-    [120, 220, 255],
-    [122, 230, 185],
-    [120, 245, 150],
-    [188, 150, 255],
-    [220, 145, 255],
-    [255, 195, 120],
-    [255, 165, 120],
-    [255, 145, 195],
-    [255, 135, 160],
-    [170, 155, 255],
-    [155, 215, 255],
-  ];
-
+  // Wie vorgegeben
   const STRONG_A = 1; // gelesen
   const SOFT_A = 0.35;   // ungelesen
 
-  // Deterministische Jahresfarbe: idx = (year mod N) * STEP mod N
-  const YEAR_STEP = 5; // coprime with 12
-
   const $ = (sel) => document.querySelector(sel);
 
+  const topbar = $("#topbar");
   const btnBack = $("#btnBack");
   const topTitle = $("#topTitle");
+  const topSub = $("#topSub");
   const btnAddYear = $("#btnAddYear");
 
   const viewYears = $("#viewYears");
@@ -151,6 +135,9 @@
       updateBookUI();
       updateYearUI();
     });
+
+    // prevent zoom on double tap (best-effort); we already set touch-action, but block dblclick too
+    document.addEventListener("dblclick", (e) => e.preventDefault(), { passive: false });
   }
 
   function setView(v) {
@@ -167,24 +154,34 @@
   }
 
   function updateTopbar() {
-    if (currentView === "years") {
-      topTitle.textContent = "NT 365";
-      return;
-    }
+    // Title always "NT 365"
+    topTitle.textContent = "NT 365";
 
-    if (currentView === "year") {
-      const yp = Math.round(yearProgress(currentYear) * 100);
-      topTitle.innerHTML = `${escapeHtml(currentYear)} <span class="meta">${yp}%</span>`;
-      return;
-    }
+    let rgb = yearRgbFor(new Date().getFullYear());
+    let pct = 100;
+    topSub.textContent = "";
 
-    if (currentView === "book") {
+    if (currentView === "year" && currentYear) {
+      rgb = yearRgbFor(Number(currentYear));
+      pct = Math.round(yearProgress(currentYear) * 100);
+      topSub.textContent = `${currentYear} · ${pct}%`;
+    } else if (currentView === "book" && currentYear && currentBookId) {
+      rgb = yearRgbFor(Number(currentYear));
+      pct = Math.round(bookProgress(currentYear, currentBookId) * 100);
       const b = BOOKS.find(x => x.id === currentBookId);
       const short = b ? (BOOK_SHORT[b.id] || b.name) : "Buch";
-      const read = b ? getReadSet(currentYear, currentBookId).size : 0;
-      const total = b ? b.chapters : 0;
-      topTitle.innerHTML = `${escapeHtml(short)} <span class="meta">${escapeHtml(currentYear)} · ${read}/${total}</span>`;
+      topSub.textContent = `${currentYear} · ${short} · ${pct}%`;
+    } else {
+      // years overview: full bar
+      pct = 100;
+      topSub.textContent = "";
     }
+
+    const barStrong = rgba(rgb, STRONG_A);
+    const barSoft = rgba(rgb, SOFT_A);
+    topbar.style.setProperty("--barStrong", barStrong);
+    topbar.style.setProperty("--barSoft", barSoft);
+    topbar.style.setProperty("--barPct", `${pct}%`);
   }
 
   function goBack() {
@@ -205,15 +202,37 @@
     return `rgba(${r}, ${g}, ${b}, ${a})`;
   }
 
-  function yearPaletteIndex(yearNumber) {
-    const n = YEAR_RGB.length;
+  // Deterministic year color with minimal repeats:
+  // Use golden-angle hue stepping -> adjacent years far apart.
+  function yearRgbFor(yearNumber) {
     const y = Number(yearNumber);
-    const mod = ((y % n) + n) % n;
-    return (mod * YEAR_STEP) % n;
+    const hue = ((y * 137.508) % 360 + 360) % 360;
+    // Pastel-but-intense: higher saturation, high lightness
+    return hslToRgb(hue, 72, 72);
   }
 
-  function yearRgbFor(yearNumber) {
-    return YEAR_RGB[yearPaletteIndex(yearNumber)];
+  function hslToRgb(h, s, l) {
+    // h [0..360), s/l [0..100]
+    s /= 100;
+    l /= 100;
+
+    const c = (1 - Math.abs(2*l - 1)) * s;
+    const hh = h / 60;
+    const x = c * (1 - Math.abs((hh % 2) - 1));
+    let r1=0, g1=0, b1=0;
+
+    if (0 <= hh && hh < 1) [r1,g1,b1] = [c,x,0];
+    else if (1 <= hh && hh < 2) [r1,g1,b1] = [x,c,0];
+    else if (2 <= hh && hh < 3) [r1,g1,b1] = [0,c,x];
+    else if (3 <= hh && hh < 4) [r1,g1,b1] = [0,x,c];
+    else if (4 <= hh && hh < 5) [r1,g1,b1] = [x,0,c];
+    else if (5 <= hh && hh < 6) [r1,g1,b1] = [c,0,x];
+
+    const m = l - c/2;
+    const r = Math.round((r1 + m) * 255);
+    const g = Math.round((g1 + m) * 255);
+    const b = Math.round((b1 + m) * 255);
+    return [r,g,b];
   }
 
   function ensureDefaultYears() {
@@ -267,9 +286,11 @@
     const years = (state.yearsOrder || []).slice().sort((a, b) => a - b);
 
     years.forEach((y) => {
-      const pct = Math.round(yearProgress(String(y)) * 100);
+      const yearKey = String(y);
+      const pct = Math.round(yearProgress(yearKey) * 100);
+      const doneBooks = booksCompletedCount(yearKey);
 
-      const rgb = yearRgbFor(y);
+      const rgb = yearRgbFor(Number(y));
       const fillStrong = rgba(rgb, STRONG_A);
       const fillSoft = rgba(rgb, SOFT_A);
 
@@ -286,17 +307,18 @@
         <div class="tileContent">
           <div class="yearTop">
             <div class="yearLabel">${y}</div>
-            <div class="yearPct">${pct}%</div>
+            <div class="yearPct">${pct}% · ${doneBooks}/27</div>
           </div>
         </div>
       `;
       btn.addEventListener("click", () => showYear(y));
       elYearsList.appendChild(btn);
     });
+
+    updateTopbar();
   }
 
   function renderYear(yearKey) {
-    updateTopbar();
     booksGrid.innerHTML = "";
 
     const orderedBooks = [];
@@ -332,11 +354,12 @@
       tile.addEventListener("click", () => showBook(b.id));
       booksGrid.appendChild(tile);
     });
+
+    updateTopbar();
   }
 
   function updateYearUI() {
     if (!currentYear) return;
-    updateTopbar();
 
     const tiles = booksGrid.querySelectorAll(".bookTile");
     tiles.forEach(tile => {
@@ -346,6 +369,7 @@
     });
 
     saveState();
+    updateTopbar();
   }
 
   function renderBook() {
@@ -374,17 +398,27 @@
     }
 
     updateBookUI();
+    updateTopbar();
   }
 
   function updateBookUI() {
     if (!currentYear || !currentBookId) return;
-    updateTopbar();
 
     const readSet = getReadSet(currentYear, currentBookId);
     chaptersGrid.querySelectorAll(".chapterTile").forEach(tile => {
       const ch = Number(tile.dataset.ch);
       tile.classList.toggle("read", readSet.has(ch));
     });
+
+    updateTopbar();
+  }
+
+  function booksCompletedCount(yearKey) {
+    let done = 0;
+    for (const b of BOOKS) {
+      if (getReadSet(yearKey, b.id).size >= b.chapters) done += 1;
+    }
+    return done;
   }
 
   function yearProgress(yearKey) {

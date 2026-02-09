@@ -31,11 +31,15 @@
 </head>
 <body>
   <div class="app" id="app">
-    <header class="topbar">
+    <header class="topbar" id="topbar">
+      <div class="topbarBase" aria-hidden="true"></div>
+      <div class="topbarFill" aria-hidden="true"></div>
+
       <button class="topbtn hidden" id="btnBack" aria-label="Zurück">←</button>
 
       <div class="topcenter" aria-live="polite">
         <div class="topTitle" id="topTitle">NT 365</div>
+        <div class="topSub" id="topSub"></div>
       </div>
 
       <button class="topbtn" id="btnAddYear" aria-label="Jahr hinzufügen" title="Jahr hinzufügen">＋</button>
