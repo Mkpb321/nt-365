@@ -153,7 +153,7 @@
     updateTopbar();
   }
 
-    function updateTopbar() {
+  function updateTopbar() {
     // Title always "NT 365"
     topTitle.textContent = "NT 365";
 
@@ -188,25 +188,7 @@
     topbar.style.setProperty("--barStrong", barStrong);
     topbar.style.setProperty("--barSoft", barSoft);
     topbar.style.setProperty("--barPct", `${pct}%`);
-  } else if (currentView === "book" && currentYear && currentBookId) {
-      rgb = yearRgbFor(Number(currentYear));
-      pct = Math.round(bookProgress(currentYear, currentBookId) * 100);
-      const b = BOOKS.find(x => x.id === currentBookId);
-      const short = b ? (BOOK_SHORT[b.id] || b.name) : "Buch";
-      topSub.textContent = `${currentYear} · ${short} · ${pct}%`;
-    } else {
-      // years overview: full bar
-      pct = 100;
-      topSub.textContent = "";
-    }
-
-    const barStrong = rgba(rgb, STRONG_A);
-    const barSoft = rgba(rgb, SOFT_A);
-    topbar.style.setProperty("--barStrong", barStrong);
-    topbar.style.setProperty("--barSoft", barSoft);
-    topbar.style.setProperty("--barPct", `${pct}%`);
   }
-
   function goBack() {
     if (currentView === "book") {
       currentBookId = null;
