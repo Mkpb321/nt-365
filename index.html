@@ -30,7 +30,21 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app" id="app">
+  <!-- LOGIN ONLY (shown when signed out) -->
+  <main class="loginView hidden" id="loginView" aria-label="Login">
+    <div class="loginBox">
+      <div class="loginBrand">NT 365</div>
+      <form class="loginForm" id="loginForm">
+        <input class="loginInput" id="loginEmail" type="email" inputmode="email" autocomplete="email" placeholder="E‑Mail" required />
+        <input class="loginInput" id="loginPassword" type="password" autocomplete="current-password" placeholder="Passwort" required />
+        <button class="loginBtn" id="btnLogin" type="submit">Login</button>
+        <div class="loginError" id="loginError" aria-live="polite"></div>
+      </form>
+    </div>
+  </main>
+
+  <!-- APP (shown when signed in) -->
+  <div class="app hidden" id="app">
     <header class="topbar" id="topbar">
       <div class="topbarBase" aria-hidden="true"></div>
       <div class="topbarFill" aria-hidden="true"></div>
@@ -42,7 +56,10 @@
         <div class="topSub" id="topSub"></div>
       </div>
 
-      <button class="topbtn" id="btnAddYear" aria-label="Jahr hinzufügen" title="Jahr hinzufügen">＋</button>
+      <div class="topActions" id="topActions">
+        <button class="topbtn" id="btnAddYear" aria-label="Jahr hinzufügen" title="Jahr hinzufügen">＋</button>
+        <button class="topbtn" id="btnLogout" aria-label="Logout" title="Logout">⎋</button>
+      </div>
     </header>
 
     <!-- VIEW: YEARS -->
@@ -66,6 +83,6 @@
     </main>
   </div>
 
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

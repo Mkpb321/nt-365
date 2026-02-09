@@ -1,4 +1,8 @@
-login hinzufügen
+logout neues symbol
+2025 · 0/27 · 0% auf startseite auch dünn
+logout knopf richtig rechts aligned
+ec vertikaler abstand auch gleich wie alles
+
 
 daten von was abgekreuzt in forestore aber was man gerade offen hat wird in browser persistiert
 es soll auch nur jahre haben die im firestore hinterlegt sind 
