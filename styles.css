@@ -110,6 +110,8 @@ button{
 }
 .topbtn:active{ background: var(--tap); }
 
+#btnBack{ background: #ffffff; }
+
 .hidden{ display: none !important; }
 .view{ padding-top: 8px; }
 

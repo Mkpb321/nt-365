@@ -153,19 +153,42 @@
     updateTopbar();
   }
 
-  function updateTopbar() {
+    function updateTopbar() {
     // Title always "NT 365"
     topTitle.textContent = "NT 365";
 
-    let rgb = yearRgbFor(new Date().getFullYear());
-    let pct = 100;
+    // Default: years overview -> transparent bar
+    let pct = 0;
+    let barStrong = "transparent";
+    let barSoft = "transparent";
     topSub.textContent = "";
 
     if (currentView === "year" && currentYear) {
-      rgb = yearRgbFor(Number(currentYear));
-      pct = Math.round(yearProgress(currentYear) * 100);
-      topSub.textContent = `${currentYear} · ${pct}%`;
+      const yPct = Math.round(yearProgress(currentYear) * 100);
+      const doneBooks = booksCompletedCount(currentYear);
+      const rgb = yearRgbFor(Number(currentYear));
+      pct = yPct;
+      barStrong = rgba(rgb, STRONG_A);
+      barSoft = rgba(rgb, SOFT_A);
+      topSub.textContent = `${currentYear} · ${doneBooks}/27 · ${yPct}%`;
     } else if (currentView === "book" && currentYear && currentBookId) {
+      const b = BOOKS.find(x => x.id === currentBookId);
+      const short = b ? (BOOK_SHORT[b.id] || b.name) : "Buch";
+      const read = b ? getReadSet(currentYear, currentBookId).size : 0;
+      const total = b ? b.chapters : 0;
+      const bPct = total ? Math.round((read / total) * 100) : 0;
+
+      const rgb = yearRgbFor(Number(currentYear));
+      pct = bPct;
+      barStrong = rgba(rgb, STRONG_A);
+      barSoft = rgba(rgb, SOFT_A);
+      topSub.textContent = `${currentYear} · ${short} · ${read}/${total} · ${bPct}%`;
+    }
+
+    topbar.style.setProperty("--barStrong", barStrong);
+    topbar.style.setProperty("--barSoft", barSoft);
+    topbar.style.setProperty("--barPct", `${pct}%`);
+  } else if (currentView === "book" && currentYear && currentBookId) {
       rgb = yearRgbFor(Number(currentYear));
       pct = Math.round(bookProgress(currentYear, currentBookId) * 100);
       const b = BOOKS.find(x => x.id === currentBookId);
@@ -204,10 +227,15 @@
 
   // Deterministic year color with minimal repeats:
   // Use golden-angle hue stepping -> adjacent years far apart.
-  function yearRgbFor(yearNumber) {
+    function yearRgbFor(yearNumber) {
     const y = Number(yearNumber);
-    const hue = ((y * 137.508) % 360 + 360) % 360;
-    // Pastel-but-intense: higher saturation, high lightness
+    // Golden-angle distribution -> adjacent years differ strongly
+    let hue = ((y * 137.508) % 360 + 360) % 360;
+
+    // Avoid pink/magenta band (roughly 285..345 deg)
+    if (hue >= 285 && hue <= 345) hue = (hue + 180) % 360;
+
+    // Pastel-but-intense: high saturation + high lightness
     return hslToRgb(hue, 72, 72);
   }
 
