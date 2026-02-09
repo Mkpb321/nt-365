@@ -82,6 +82,8 @@
 
   const $ = (sel) => document.querySelector(sel);
 
+  const appEl = $("#app");
+
   const topbar = $("#topbar");
   const btnBack = $("#btnBack");
   const topTitle = $("#topTitle");
@@ -201,7 +203,7 @@
     topbar.style.setProperty("--barStrong", barStrong);
     topbar.style.setProperty("--barSoft", barSoft);
     topbar.style.setProperty("--barPct", `${pct}%`);
-    topbar.style.setProperty("--btnYearSoft", btnYearSoft);
+    appEl.style.setProperty("--btnYearSoft", btnYearSoft);
     topbar.style.setProperty("--addSoft", addSoft);
   }
   function goBack() {

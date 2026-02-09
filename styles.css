@@ -54,7 +54,7 @@ button{
   grid-template-columns: 40px 1fr 40px;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px; /* minimal */
+  padding: 6px 0; /* minimal */
   border-radius: 14px;
   overflow: hidden;
 }
@@ -75,6 +75,7 @@ button{
 .topcenter{
   text-align: center;
   min-width: 0;
+  padding: 0 6px;
   position: relative;
   z-index: 1;
 }
