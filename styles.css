@@ -159,6 +159,13 @@ button{
   gap: var(--gapYears);
 }
 
+.emptyHint{
+  color: var(--muted);
+  text-align: center;
+  padding: 18px 8px;
+  font-weight: 650;
+}
+
 .yearItem{
   width: 100%;
   padding: 12px 12px;

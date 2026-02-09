@@ -6,6 +6,29 @@ import {
   signInWithEmailAndPassword,
   signOut
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import {
+  getFirestore,
+  collection,
+  doc,
+  setDoc,
+  updateDoc,
+  onSnapshot,
+  writeBatch,
+  serverTimestamp,
+  arrayUnion,
+  arrayRemove
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+/**
+ * Storage:
+ * - Firestore: reading progress + which years exist
+ *   /nt-365/{uid}/years/{YYYY}
+ * - Browser (localStorage): UI/location only (last view/year/book + lastYear for colors)
+ */
+
+const ROOT_COLLECTION = "nt-365";
+const UI_STORAGE_KEY = "nt365_ui_v1";
+const LEGACY_STORAGE_KEY = "nt_reading_tracker_v2"; // previous local-only progress (optional migration)
 
 // Firebase configuration (provided)
 const firebaseConfig = {
@@ -19,8 +42,7 @@ const firebaseConfig = {
 
 const fbApp = initializeApp(firebaseConfig);
 const auth = getAuth(fbApp);
-
-const STORAGE_KEY = "nt_reading_tracker_v2";
+const db = getFirestore(fbApp);
 
 const BOOKS = [
   { id: "mat", name: "Matthäus", chapters: 28, group: "Evangelien" },
@@ -97,8 +119,8 @@ const GROUP_RGB = {
   "Prophetie": [255, 145, 195],
 };
 
-const STRONG_A = 1; // gelesen
-const SOFT_A = 0.35;   // ungelesen
+const STRONG_A = 1;     // gelesen
+const SOFT_A = 0.35;    // ungelesen
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -130,11 +152,22 @@ const chaptersGrid = $("#chaptersGrid");
 const btnMarkAll = $("#btnMarkAll");
 const btnMarkNone = $("#btnMarkNone");
 
-let state = loadState();
+// Browser UI/location state (local only)
+let ui = loadUiState();
+
+// Firestore progress state (per-user)
+let currentUid = null;
+let unsubscribeYears = null;
+let remote = { yearsOrder: [], years: {} }; // years: { [yearKey]: { [bookId]: number[] } }
+
+// Navigation
 let currentYear = null;
 let currentBookId = null;
 let currentView = "years"; // years | year | book
+let uiWired = false;
+let allowUiPersist = false;
 let started = false;
+let restoredAfterRemote = false;
 
 setupAuth();
 
@@ -158,43 +191,53 @@ function setupAuth() {
 
   // Logout
   btnLogout.addEventListener("click", async () => {
-    try {
-      await signOut(auth);
-    } catch (e) {
-      // ignore
-    }
+    try { await signOut(auth); } catch { /* ignore */ }
   });
 
-  // Auth state
   onAuthStateChanged(auth, (user) => {
     if (!user) {
-      // signed out: show only login
+      teardownUser();
       appEl.classList.add("hidden");
       loginView.classList.remove("hidden");
       loginError.textContent = "";
       return;
     }
 
-    // signed in: show app
+    // signed in
     loginView.classList.add("hidden");
     appEl.classList.remove("hidden");
-    startAppOnce();
+    startAppOnce(user.uid);
   });
 }
 
-function startAppOnce() {
-  if (started) {
-    // still update header vars (e.g. + color)
+function teardownUser() {
+  if (typeof unsubscribeYears === "function") {
+    try { unsubscribeYears(); } catch { /* ignore */ }
+  }
+  unsubscribeYears = null;
+  currentUid = null;
+  remote = { yearsOrder: [], years: {} };
+  currentYear = null;
+  currentBookId = null;
+  currentView = "years";
+  started = false;
+  restoredAfterRemote = false;
+  allowUiPersist = false;
+}
+
+function startAppOnce(uid) {
+  if (started && currentUid === uid) {
+    // still update header vars
     updateTopbar();
     setView(currentView);
     return;
   }
+
   started = true;
+  currentUid = uid;
 
-  ensureDefaultYears();
-  renderYears();
-  setView("years");
-
+  // Wire UI interactions (once)
+if (!uiWired) {
   btnAddYear.addEventListener("click", addYearFlow);
   btnBack.addEventListener("click", goBack);
 
@@ -223,6 +266,182 @@ function startAppOnce() {
 
   // prevent zoom on double tap (best-effort)
   document.addEventListener("dblclick", (e) => e.preventDefault(), { passive: false });
+
+  uiWired = true;
+}
+
+  // Start with years view (empty until Firestore loads)
+  setView("years");
+  renderYears();
+
+  // Subscribe to Firestore years; first snapshot will also restore UI state
+  subscribeYears(uid);
+}
+
+function yearsCollectionRef(uid) {
+  return collection(db, ROOT_COLLECTION, uid, "years");
+}
+function yearDocRef(uid, yearKey) {
+  return doc(db, ROOT_COLLECTION, uid, "years", String(yearKey));
+}
+
+function subscribeYears(uid) {
+  if (typeof unsubscribeYears === "function") {
+    try { unsubscribeYears(); } catch { /* ignore */ }
+  }
+
+  unsubscribeYears = onSnapshot(
+    yearsCollectionRef(uid),
+    async (snap) => {
+      const years = {};
+      const yearsOrder = [];
+
+      for (const d of snap.docs) {
+        const yearKey = String(d.id);
+        const data = d.data() || {};
+        const books = (data.books && typeof data.books === "object") ? data.books : {};
+        years[yearKey] = books;
+
+        const yNum = Number(yearKey);
+        if (Number.isFinite(yNum)) yearsOrder.push(yNum);
+      }
+
+      yearsOrder.sort((a, b) => a - b);
+      remote = { yearsOrder, years };
+
+      // Optional: migrate legacy local progress once (only if Firestore is empty)
+      if (!ui.legacyMigrated && remote.yearsOrder.length === 0) {
+        const migrated = await maybeMigrateLegacyLocal(uid);
+        if (migrated) {
+          ui.legacyMigrated = true;
+          saveUiState();
+          return; // next snapshot will include migrated data
+        }
+      }
+
+      // If currentYear was deleted remotely -> go back to years
+      if (currentYear && !remote.years[currentYear]) {
+        currentYear = null;
+        currentBookId = null;
+        setView("years");
+      }
+
+      // First-time restore (after we have year list)
+      if (!restoredAfterRemote) {
+        restoredAfterRemote = true;
+        restoreUiLocation();
+      }
+
+      refreshCurrentView();
+    },
+    (err) => {
+      console.error("Firestore subscribe error:", err);
+      // still try to render what we have (likely empty)
+      refreshCurrentView();
+    }
+  );
+}
+
+async function maybeMigrateLegacyLocal(uid) {
+  try {
+    const legacy = loadLegacyProgress();
+    const hasLegacyYears =
+      legacy &&
+      legacy.years &&
+      typeof legacy.years === "object" &&
+      Object.keys(legacy.years).length > 0;
+
+    if (!hasLegacyYears) return false;
+
+    const batch = writeBatch(db);
+    const yearKeys = Object.keys(legacy.years);
+
+    for (const yearKey of yearKeys) {
+      const yNum = Number(yearKey);
+      if (!Number.isFinite(yNum)) continue;
+
+      const books = legacy.years[yearKey] && typeof legacy.years[yearKey] === "object"
+        ? legacy.years[yearKey]
+        : {};
+
+      batch.set(yearDocRef(uid, yearKey), {
+        year: yNum,
+        books,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }, { merge: false });
+    }
+
+    await batch.commit();
+    return true;
+  } catch (e) {
+    console.warn("Legacy migration failed (ignored):", e);
+    return false;
+  }
+}
+
+function refreshCurrentView() {
+  if (currentView === "years") {
+    renderYears();
+    return;
+  }
+  if (currentView === "year") {
+    if (!currentYear) {
+      setView("years");
+      renderYears();
+      return;
+    }
+    renderYear(currentYear);
+    return;
+  }
+  if (currentView === "book") {
+    if (!currentYear || !currentBookId) {
+      setView("years");
+      renderYears();
+      return;
+    }
+    renderBook();
+  }
+}
+
+function restoreUiLocation() {
+  const desiredView = ui.view || "years";
+  const y = ui.currentYear ? String(ui.currentYear) : null;
+  const b = ui.currentBookId ? String(ui.currentBookId) : null;
+
+  if (desiredView === "book" && y && b && remote.years[y]) {
+    currentYear = y;
+    currentBookId = b;
+    setView("book");
+    renderBook();
+    allowUiPersist = true;
+    persistUiLocation();
+    return;
+  }
+
+  if ((desiredView === "year" || desiredView === "book") && y && remote.years[y]) {
+    currentYear = y;
+    currentBookId = null;
+    setView("year");
+    renderYear(y);
+    allowUiPersist = true;
+    persistUiLocation();
+    return;
+  }
+
+  currentYear = null;
+  currentBookId = null;
+  setView("years");
+  renderYears();
+  allowUiPersist = true;
+  persistUiLocation();
+}
+
+function persistUiLocation() {
+  ui.view = currentView;
+  ui.currentYear = currentYear;
+  ui.currentBookId = currentBookId;
+  saveUiState();
 }
 
 function setView(v) {
@@ -238,6 +457,7 @@ function setView(v) {
   btnAddYear.classList.toggle("hidden", v !== "years");
   btnLogout.classList.toggle("hidden", v !== "years");
 
+  if (allowUiPersist) persistUiLocation();
   updateTopbar();
 }
 
@@ -279,10 +499,8 @@ function updateTopbar() {
   // + and logout button color (years view only): last clicked year in SOFT
   let addSoft = "var(--btnBg)";
   if (currentView === "years") {
-    const y = state.lastYear ? Number(state.lastYear) : null;
-    if (Number.isFinite(y)) {
-      addSoft = rgba(yearRgbFor(y), SOFT_A);
-    }
+    const y = ui.lastYear ? Number(ui.lastYear) : null;
+    if (Number.isFinite(y)) addSoft = rgba(yearRgbFor(y), SOFT_A);
   }
 
   topbar.style.setProperty("--barStrong", barStrong);
@@ -344,45 +562,41 @@ function hslToRgb(h, s, l) {
   return [r,g,b];
 }
 
-function ensureDefaultYears() {
-  state.years = state.years || {};
-  state.yearsOrder = state.yearsOrder || [];
-
-  if (!Array.isArray(state.yearsOrder) || state.yearsOrder.length === 0) {
-    const now = new Date();
-    const y = now.getFullYear();
-    state.yearsOrder = [y - 2, y - 1, y, y + 1, y + 2];
-  }
-
-  for (const yy of state.yearsOrder) {
-    state.years[String(yy)] = state.years[String(yy)] || {};
-  }
-  saveState();
-}
-
-function addYearFlow() {
+async function addYearFlow() {
   const input = prompt("Jahr hinzufügen (z.B. 2026):");
   if (!input) return;
   const y = Number(String(input).trim());
   if (!Number.isFinite(y) || y < 1900 || y > 3000) return;
 
-  const key = String(y);
-  state.years = state.years || {};
-  state.yearsOrder = state.yearsOrder || [];
+  const yearKey = String(Math.trunc(y));
+  if (!currentUid) return;
 
-  if (!state.yearsOrder.includes(y)) state.yearsOrder.push(y);
-  state.yearsOrder.sort((a, b) => a - b);
+  // already exists -> just open it
+  if (remote.years[yearKey]) {
+    showYear(yearKey);
+    return;
+  }
 
-  state.years[key] = state.years[key] || {};
-  saveState();
-  renderYears();
+  try {
+    await setDoc(yearDocRef(currentUid, yearKey), {
+      year: Math.trunc(y),
+      books: {},
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    }, { merge: false });
+
+    // Snapshot will refresh lists. We can still navigate optimistically.
+    showYear(yearKey);
+  } catch (e) {
+    console.error("Failed to create year:", e);
+  }
 }
 
 function showYear(y) {
   currentYear = String(y);
   currentBookId = null;
-  state.lastYear = currentYear;
-  saveState();
+  ui.lastYear = currentYear;
+  saveUiState();
   setView("year");
   renderYear(currentYear);
 }
@@ -395,7 +609,16 @@ function showBook(bookId) {
 
 function renderYears() {
   elYearsList.innerHTML = "";
-  const years = (state.yearsOrder || []).slice().sort((a, b) => a - b);
+  const years = (remote.yearsOrder || []).slice().sort((a, b) => a - b);
+
+  if (!years.length) {
+    const hint = document.createElement("div");
+    hint.className = "emptyHint";
+    hint.textContent = "Noch keine Jahre – tippe auf ＋ um ein Jahr anzulegen.";
+    elYearsList.appendChild(hint);
+    updateTopbar();
+    return;
+  }
 
   years.forEach((y) => {
     const yearKey = String(y);
@@ -423,7 +646,7 @@ function renderYears() {
         </div>
       </div>
     `;
-    btn.addEventListener("click", () => showYear(y));
+    btn.addEventListener("click", () => showYear(yearKey));
     elYearsList.appendChild(btn);
   });
 
@@ -480,7 +703,6 @@ function updateYearUI() {
     tile.style.setProperty("--fillPct", `${pct}%`);
   });
 
-  saveState();
   updateTopbar();
 }
 
@@ -552,11 +774,11 @@ function totalChapters() {
 }
 
 function getReadSet(yearKey, bookId) {
-  state.years = state.years || {};
-  state.years[yearKey] = state.years[yearKey] || {};
-  const arr = state.years[yearKey][bookId] || [];
+  const y = remote.years && remote.years[yearKey] ? remote.years[yearKey] : {};
+  const arr = Array.isArray(y[bookId]) ? y[bookId] : [];
   const b = BOOKS.find(x => x.id === bookId);
   const max = b ? b.chapters : 9999;
+
   const s = new Set();
   for (const v of arr) {
     const n = Number(v);
@@ -565,50 +787,118 @@ function getReadSet(yearKey, bookId) {
   return s;
 }
 
-function setReadSet(yearKey, bookId, set) {
-  state.years = state.years || {};
-  state.years[yearKey] = state.years[yearKey] || {};
+function setReadSetLocal(yearKey, bookId, set) {
   const arr = Array.from(set).sort((a, b) => a - b);
-  state.years[yearKey][bookId] = arr;
-  saveState();
+  remote.years = remote.years || {};
+  remote.years[yearKey] = remote.years[yearKey] || {};
+  remote.years[yearKey][bookId] = arr;
 }
 
-function toggleChapter(yearKey, bookId, ch) {
+async function toggleChapter(yearKey, bookId, ch) {
+  if (!currentUid) return;
   const s = getReadSet(yearKey, bookId);
-  if (s.has(ch)) s.delete(ch);
-  else s.add(ch);
-  setReadSet(yearKey, bookId, s);
-}
+  const has = s.has(ch);
+  if (has) s.delete(ch); else s.add(ch);
 
-function markAllChapters(yearKey, bookId) {
-  const b = BOOKS.find(x => x.id === bookId);
-  if (!b) return;
-  const s = new Set();
-  for (let i = 1; i <= b.chapters; i++) s.add(i);
-  setReadSet(yearKey, bookId, s);
-}
+  // optimistic local update
+  setReadSetLocal(yearKey, bookId, s);
 
-function clearAllChapters(yearKey, bookId) {
-  setReadSet(yearKey, bookId, new Set());
-}
-
-function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { yearsOrder: [], years: {}, lastYear: null };
-    const obj = JSON.parse(raw);
-    return {
-      yearsOrder: Array.isArray(obj.yearsOrder) ? obj.yearsOrder : [],
-      years: obj.years && typeof obj.years === "object" ? obj.years : {},
-      lastYear: typeof obj.lastYear === "string" ? obj.lastYear : (Number.isFinite(obj.lastYear) ? String(obj.lastYear) : null)
-    };
-  } catch {
-    return { yearsOrder: [], years: {}, lastYear: null };
+    await updateDoc(yearDocRef(currentUid, yearKey), {
+      [`books.${bookId}`]: has ? arrayRemove(ch) : arrayUnion(ch),
+      updatedAt: serverTimestamp()
+    });
+  } catch (e) {
+    console.error("Failed to toggle chapter:", e);
   }
 }
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+async function markAllChapters(yearKey, bookId) {
+  if (!currentUid) return;
+  const b = BOOKS.find(x => x.id === bookId);
+  if (!b) return;
+
+  const all = [];
+  for (let i = 1; i <= b.chapters; i++) all.push(i);
+
+  // optimistic local update
+  setReadSetLocal(yearKey, bookId, new Set(all));
+
+  try {
+    await updateDoc(yearDocRef(currentUid, yearKey), {
+      [`books.${bookId}`]: all,
+      updatedAt: serverTimestamp()
+    });
+  } catch (e) {
+    console.error("Failed to mark all chapters:", e);
+  }
+}
+
+async function clearAllChapters(yearKey, bookId) {
+  if (!currentUid) return;
+
+  // optimistic local update
+  setReadSetLocal(yearKey, bookId, new Set());
+
+  try {
+    await updateDoc(yearDocRef(currentUid, yearKey), {
+      [`books.${bookId}`]: [],
+      updatedAt: serverTimestamp()
+    });
+  } catch (e) {
+    console.error("Failed to clear chapters:", e);
+  }
+}
+
+function loadUiState() {
+  try {
+    const raw = localStorage.getItem(UI_STORAGE_KEY);
+    if (!raw) return {
+      view: "years",
+      currentYear: null,
+      currentBookId: null,
+      lastYear: null,
+      legacyMigrated: false
+    };
+    const obj = JSON.parse(raw);
+    return {
+      view: (obj && typeof obj.view === "string") ? obj.view : "years",
+      currentYear: (obj && (typeof obj.currentYear === "string" || typeof obj.currentYear === "number"))
+        ? String(obj.currentYear)
+        : null,
+      currentBookId: (obj && typeof obj.currentBookId === "string") ? obj.currentBookId : null,
+      lastYear: (obj && (typeof obj.lastYear === "string" || typeof obj.lastYear === "number"))
+        ? String(obj.lastYear)
+        : null,
+      legacyMigrated: !!(obj && obj.legacyMigrated)
+    };
+  } catch {
+    return {
+      view: "years",
+      currentYear: null,
+      currentBookId: null,
+      lastYear: null,
+      legacyMigrated: false
+    };
+  }
+}
+
+function saveUiState() {
+  localStorage.setItem(UI_STORAGE_KEY, JSON.stringify(ui));
+}
+
+function loadLegacyProgress() {
+  try {
+    const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    return {
+      yearsOrder: Array.isArray(obj.yearsOrder) ? obj.yearsOrder : [],
+      years: obj.years && typeof obj.years === "object" ? obj.years : {}
+    };
+  } catch {
+    return null;
+  }
 }
 
 function escapeHtml(s) {
