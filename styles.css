@@ -12,8 +12,8 @@
   --r: 12px;
   --fs: 16px;
 
-  --gapYears: 8px;
-  --gapTiles: 8px;
+  --gapYears: 10px;
+  --gapTiles: 6px;
 }
 
 *{ box-sizing: border-box; }
@@ -65,6 +65,7 @@ button{
   z-index: 0;
   min-height: 42px;
 }
+
 .topbarFill{
   position: absolute;
   inset: 0 auto 0 0;
@@ -95,7 +96,6 @@ button{
   font-size: 14px;
   line-height: 1.05;
   white-space: nowrap; /* always show full title */
-  
 }
 .topSub{
   margin-top: 2px;
@@ -112,7 +112,7 @@ button{
   width: 40px;
   height: 30px;
   border-radius: 10px;
-  background: var(--btnBg);
+  background: var(--_topbtnbg, var(--btnBg));
   display: grid;
   place-items: center;
   font-weight: 950;
@@ -120,14 +120,14 @@ button{
   position: relative;
   z-index: 1;
 }
-.topbtn:active{ background: var(--tap); }
+.topbtn:active{ background: var(--_topbtnbg, var(--btnBg)); }
 
-#btnBack{ background: #ffffff; margin-left: 8px; }
+#btnBack{ --_topbtnbg: #ffffff; background: var(--_topbtnbg); margin-left: 8px; }
 
-#btnAddTracker{ background: var(--addSoft, var(--btnBg)); }
+#btnAddTracker{ --_topbtnbg: var(--addSoft, var(--btnBg)); background: var(--_topbtnbg); }
 
 .hidden{ display: none !important; }
-.view{ padding-top: 8px; }/*todo
+.view{ padding-top: 8px; }
 
 /* Shared "tile-as-progress" */
 .tile{
@@ -203,7 +203,7 @@ button{
   text-align: center;
   min-height: 54px;
 }
-.bookTile:active{ filter: brightness(0.985); }
+.bookTile:active{ filter: none; }
 
 .bookShort{
   font-weight: 980;
@@ -232,7 +232,7 @@ button{
   padding: 7px 10px; /* smaller, font-size stays */
   font-weight: 950;
 }
-.pill:active{ background: var(--tap); }
+.pill:active{ background: var(--btnYearStrong, var(--btnYearSoft, var(--btnBg))); }
 
 /* Chapters */
 .chapters{
@@ -257,13 +257,13 @@ button{
   user-select: none;
   touch-action: manipulation;
 }
-.chapterTile:active{ filter: brightness(0.985); }
+.chapterTile:active{ filter: none; }
 
 .chapterTile.read{
   background: var(--chStrong, rgba(200,200,200,1));
 }
 
-#btnLogout{ background: var(--addSoft, var(--btnBg)); }
+#btnLogout{ --_topbtnbg: var(--addSoft, var(--btnBg)); background: var(--_topbtnbg); }
 
 /* Login */
 .loginView{
@@ -305,7 +305,7 @@ button{
   padding: 12px 12px;
   font-weight: 950;
 }
-.loginBtn:active{ background: var(--tap); }
+.loginBtn:active{ filter: none; }
 .loginError{
   min-height: 18px;
   font-size: 12px;
@@ -342,7 +342,7 @@ button{
 .textInput{
   width: 100%;
   border: 0;
-  background: rgba(236,232,255,.55);
+  background: var(--draftSuperSoft, rgba(236,232,255,.35));
   border-radius: 12px;
   padding: 12px 12px;
   font-weight: 650;
@@ -352,7 +352,7 @@ button{
 
 /* Add view: input tinted with selected tracker color (SOFT_A) */
 #viewAddTracker .textInput{
-  background: var(--draftSuperSoft, rgba(236,232,255,.55));
+  background: var(--draftSuperSoft, rgba(236,232,255,.35));
 }
 
 /* Add view: hide scope-selection hints (requested) */
@@ -381,7 +381,7 @@ button{
   background: var(--draftStrong, var(--btnYearSoft, var(--btnBg)));
 }
 
-.chipBtn:active{ background: var(--tap); }
+.chipBtn:active{ filter: none; }
 
 .swatches{
   display: grid;
@@ -426,14 +426,14 @@ button{
 }
 
 .miniBtn{
-  background: rgba(21,19,43,.08);
+  background: var(--draftSoft, rgba(21,19,43,.08));
   border-radius: 10px;
   padding: 7px 10px;
   font-weight: 950;
   font-size: 12px;
 }
 
-.miniBtn:active{ background: var(--tap); }
+.miniBtn:active{ background: var(--draftStrong, var(--draftSoft, rgba(21,19,43,.08))); }
 
 .bookPickSection{
   padding-top: 8px;
@@ -471,7 +471,7 @@ button{
   background: var(--bookStrong, var(--draftStrong, var(--btnYearSoft, var(--btnBg))));
 }
 
-.pickBtn:active{ background: var(--tap); }
+.pickBtn:active{ filter: none; }
 
 .formError{
   min-height: 18px;

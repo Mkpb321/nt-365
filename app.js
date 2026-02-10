@@ -544,6 +544,7 @@ function updateTopbar() {
   let barStrong = "transparent";
   let barSoft = "transparent";
   let btnSoft = "transparent";
+  let btnStrong = "transparent";
 
   const tracker = getCurrentTracker();
 
@@ -558,6 +559,7 @@ function updateTopbar() {
     // (updateTopbar runs after the add view render and would otherwise overwrite).
     const rgb = hexToRgb(draftColorHex || ui.lastTrackerColor || "#cccccc");
     btnSoft = rgba(rgb, SOFT_A);
+    btnStrong = rgba(rgb, STRONG_A);
   } else if (currentView === "tracker" && tracker) {
     const st = trackerStats(tracker);
     topTitle.textContent = String(tracker.name || "Tracker");
@@ -568,6 +570,7 @@ function updateTopbar() {
     barStrong = rgba(rgb, STRONG_A);
     barSoft = rgba(rgb, SOFT_A);
     btnSoft = barSoft;
+    btnStrong = barStrong;
   } else if (currentView === "book" && tracker && currentBookId) {
     const b = BOOK_BY_ID.get(currentBookId);
     const read = getReadSet(tracker, currentBookId).size;
@@ -582,6 +585,7 @@ function updateTopbar() {
     barStrong = rgba(rgb, STRONG_A);
     barSoft = rgba(rgb, SOFT_A);
     btnSoft = barSoft;
+    btnStrong = barStrong;
   } else {
     topTitle.textContent = "NT 365";
     topSub.textContent = "";
@@ -600,6 +604,7 @@ function updateTopbar() {
   topbar.style.setProperty("--barSoft", barSoft);
   topbar.style.setProperty("--barPct", `${pct}%`);
   appEl.style.setProperty("--btnYearSoft", btnSoft);
+  appEl.style.setProperty("--btnYearStrong", btnStrong);
   appEl.style.setProperty("--addSoft", addSoft);
 }
 
@@ -611,7 +616,7 @@ function renderTrackers() {
 
   trackers.forEach((t) => {
     const st = trackerStats(t);
-    const rgb = hexToRgb(t.color || "#cccccc");
+    const rgb = bookGroupRgb(currentBookId);
     const fillStrong = rgba(rgb, STRONG_A);
     const fillSoft = rgba(rgb, SOFT_A);
 
@@ -727,7 +732,7 @@ function renderBook() {
     return;
   }
 
-  const rgb = hexToRgb(t.color || "#cccccc");
+  const rgb = bookGroupRgb(currentBookId);
   const chStrong = rgba(rgb, STRONG_A);
   const chSoft = rgba(rgb, SOFT_A);
 
