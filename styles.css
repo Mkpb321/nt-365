@@ -89,6 +89,7 @@ button{
   gap: 8px;
   position: relative;
   z-index: 1;
+  margin-right: 8px; /* match left button inset */
 }
 .topTitle{
   font-weight: 980;
@@ -122,14 +123,16 @@ button{
 }
 .topbtn:active{ background: var(--_topbtnbg, var(--btnBg)); }
 
-#btnBack,
-#btnMenu{
+#btnBack{
   --_topbtnbg: #ffffff;
   background: var(--_topbtnbg);
   margin-left: 8px;
   grid-column: 1;
   justify-self: start;
 }
+
+/* Burger button lives on the right and should match the ＋ style */
+#btnMenu{ --_topbtnbg: var(--addSoft, var(--btnBg)); background: var(--_topbtnbg); }
 
 #btnEditTracker{ --_topbtnbg: #ffffff; background: var(--_topbtnbg); }
 
@@ -142,7 +145,8 @@ button{
 /* Burger menu */
 .menuPanel{
   position: absolute;
-  left: 8px;
+  right: 8px;
+  left: auto;
   top: calc(100% + 8px);
   min-width: 180px;
   padding: 8px;

@@ -443,6 +443,10 @@ chaptersGrid.addEventListener("click", (e) => {
   });
 
   btnEditDelete.addEventListener("click", async () => {
+    const tracker = getCurrentTracker();
+    const name = tracker && tracker.name ? `\"${tracker.name}\"` : "diesen Tracker";
+    const ok = window.confirm(`Willst du ${name} wirklich löschen? Dieser Schritt kann nicht rückgängig gemacht werden.`);
+    if (!ok) return;
     await deleteCurrentTracker();
   });
 
