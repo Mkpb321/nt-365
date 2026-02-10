@@ -773,9 +773,10 @@ function updateTopbar() {
   appEl.style.setProperty("--epcSoft", rgba(ergb, SOFT_A));
   appEl.style.setProperty("--epcStrong", rgba(ergb, STRONG_A));
 
-  // Keep menu toggle in sync
-  if (menuEpic) {
-    menuEpic.checked = getEpicModeLevel() > 0;
+  // Keep menu button in sync
+  if (btnMenuEpic) {
+    const lvl = getEpicModeLevel();
+    btnMenuEpic.textContent = (lvl === 0) ? "Epic: Aus" : (lvl === 1) ? "Epic: An" : "Epic: Mehr";
   }
 }
 
