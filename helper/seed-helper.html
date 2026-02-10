@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NT 365 – Seed Helper</title>
+  <style>
+    body{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; color:#15132b; }
+    .card{ max-width: 520px; border: 1px solid rgba(0,0,0,.12); border-radius: 12px; padding: 16px; }
+    h1{ font-size: 18px; margin: 0 0 12px; }
+    label{ display:block; font-size: 12px; margin: 10px 0 6px; opacity:.8; }
+    input{ width:100%; padding:10px 12px; border-radius:10px; border:1px solid rgba(0,0,0,.15); }
+    button{ margin-top: 12px; width: 100%; padding: 12px; border-radius: 10px; border: 0; font-weight: 800; cursor: pointer; }
+    .btnLogin{ background:#ece8ff; }
+    .btnSeed{ background:#849eeb; color:#fff; }
+    .muted{ margin-top:10px; font-size:12px; opacity:.75; white-space: pre-wrap; }
+    .row{ display:flex; gap:10px; }
+    .row > * { flex:1; }
+    .hidden{ display:none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>NT 365 – Seed Helper</h1>
+
+    <div id="signedOut">
+      <div class="row">
+        <div>
+          <label for="email">E-Mail</label>
+          <input id="email" type="email" autocomplete="email" placeholder="you@example.com" />
+        </div>
+        <div>
+          <label for="password">Passwort</label>
+          <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+        </div>
+      </div>
+      <button class="btnLogin" id="btnLogin">Login</button>
+      <div class="muted" id="loginMsg"></div>
+    </div>
+
+    <div id="signedIn" class="hidden">
+      <div class="muted" id="userLine"></div>
+
+      <button class="btnSeed" id="btnSeed">
+        Tracker anlegen: NT durchlesen 2021–2025 (alles gelesen)
+      </button>
+
+      <button class="btnLogin" id="btnLogout">Logout</button>
+
+      <div class="muted" id="seedMsg"></div>
+      <div class="muted">
+        Hinweis: Falls du doppelte Tracker vermeiden willst, lösche vorher in der App oder passe die Namen/Jahre an.
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import {
+      getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
+    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+    import {
+      getFirestore, collection, addDoc, serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+    // Firebase configuration (wie in deiner App) :contentReference[oaicite:1]{index=1}
+    const firebaseConfig = {
+      apiKey: "AIzaSyDVzf54RilCJO3JD4a5Lm7KsJ7Xo1XQJME",
+      authDomain: "my-hobby-apps.firebaseapp.com",
+      projectId: "my-hobby-apps",
+      storageBucket: "my-hobby-apps.firebasestorage.app",
+      messagingSenderId: "894079667150",
+      appId: "1:894079667150:web:c88ac0aae916980f7ef99f"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // NT Bücher (IDs + Kapitelanzahl müssen zu deiner App passen) :contentReference[oaicite:2]{index=2}
+    const NT_BOOKS = [
+      { id: "mat", chapters: 28 },
+      { id: "mar", chapters: 16 },
+      { id: "luk", chapters: 24 },
+      { id: "joh", chapters: 21 },
+      { id: "act", chapters: 28 },
+      { id: "rom", chapters: 16 },
+      { id: "1co", chapters: 16 },
+      { id: "2co", chapters: 13 },
+      { id: "gal", chapters: 6 },
+      { id: "eph", chapters: 6 },
+      { id: "phi", chapters: 4 },
+      { id: "col", chapters: 4 },
+      { id: "1th", chapters: 5 },
+      { id: "2th", chapters: 3 },
+      { id: "1ti", chapters: 6 },
+      { id: "2ti", chapters: 4 },
+      { id: "tit", chapters: 3 },
+      { id: "phm", chapters: 1 },
+      { id: "heb", chapters: 13 },
+      { id: "jam", chapters: 5 },
+      { id: "1pe", chapters: 5 },
+      { id: "2pe", chapters: 3 },
+      { id: "1jo", chapters: 5 },
+      { id: "2jo", chapters: 1 },
+      { id: "3jo", chapters: 1 },
+      { id: "jud", chapters: 1 },
+      { id: "rev", chapters: 22 },
+    ];
+
+    const COLOR = "#849eeb";
+    const YEARS = [2021, 2022, 2023, 2024, 2025];
+
+    const $ = (id) => document.getElementById(id);
+
+    const signedOut = $("signedOut");
+    const signedIn = $("signedIn");
+    const loginMsg = $("loginMsg");
+    const seedMsg = $("seedMsg");
+    const userLine = $("userLine");
+
+    $("btnLogin").addEventListener("click", async () => {
+      loginMsg.textContent = "";
+      seedMsg.textContent = "";
+      const email = $("email").value.trim();
+      const password = $("password").value;
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+      } catch (e) {
+        loginMsg.textContent = `Login fehlgeschlagen: ${e?.code || e?.message || e}`;
+      }
+    });
+
+    $("btnLogout").addEventListener("click", async () => {
+      seedMsg.textContent = "";
+      loginMsg.textContent = "";
+      try { await signOut(auth); } catch {}
+    });
+
+    onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        signedIn.classList.add("hidden");
+        signedOut.classList.remove("hidden");
+        userLine.textContent = "";
+        return;
+      }
+      signedOut.classList.add("hidden");
+      signedIn.classList.remove("hidden");
+      userLine.textContent = `Eingeloggt als: ${user.email || user.uid}`;
+    });
+
+    function allChaptersReadProgress() {
+      const progress = {};
+      for (const b of NT_BOOKS) {
+        progress[b.id] = Array.from({ length: b.chapters }, (_, i) => i + 1);
+      }
+      return progress;
+    }
+
+    $("btnSeed").addEventListener("click", async () => {
+      seedMsg.textContent = "";
+      const user = auth.currentUser;
+      if (!user) {
+        seedMsg.textContent = "Nicht eingeloggt.";
+        return;
+      }
+
+      const colRef = collection(db, "nt-365", user.uid, "trackers"); // wie App :contentReference[oaicite:3]{index=3}
+      const bookIds = NT_BOOKS.map(b => b.id);
+      const progress = allChaptersReadProgress();
+
+      try {
+        $("btnSeed").disabled = true;
+
+        const createdIds = [];
+        for (const y of YEARS) {
+          const name = `NT durchlesen ${y}`;
+          const docRef = await addDoc(colRef, {
+            name,
+            color: COLOR,
+            year: y,
+            bookIds,
+            progress,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          createdIds.push(`${name} → ${docRef.id}`);
+        }
+
+        seedMsg.textContent =
+          "Fertig. Angelegt:\n" + createdIds.map(s => "• " + s).join("\n");
+      } catch (e) {
+        seedMsg.textContent = `Fehler beim Anlegen: ${e?.code || e?.message || e}`;
+      } finally {
+        $("btnSeed").disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
