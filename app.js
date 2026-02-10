@@ -849,241 +849,281 @@ function ensureFxLayer() {
   slamLayer.setAttribute("aria-hidden", "true");
   document.body.appendChild(slamLayer);
 
-  const ctx = canvas.getContext("2d");
-  const particles = [];
-  let rafId = 0;
-  let lastT = performance.now();
+const ctx = canvas.getContext("2d", { alpha: true, desynchronized: true });
 
-  const resize = () => {
-    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
-    const w = Math.max(1, window.innerWidth);
-    const h = Math.max(1, window.innerHeight);
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(h * dpr);
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${h}px`;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  };
-  window.addEventListener("resize", resize, { passive: true });
-  resize();
+// Performance: keep the illusion "epic" but cap real work.
+const particles = [];
+const pool = [];
+let rafId = 0;
+let lastT = performance.now();
+let lastDraw = 0;
 
-  const start = () => {
-    if (rafId) return;
-    lastT = performance.now();
+const hw = navigator.hardwareConcurrency || 4;
+const mem = navigator.deviceMemory || 4;
+const LOW_END = hw <= 4 || mem <= 4;
+
+// Quality knobs (smaller canvas + fewer draws/particles) — still looks loud.
+const COUNT_Q = LOW_END ? 0.62 : 0.9;      // scale particle counts
+const FPS = LOW_END ? 26 : 34;             // throttle draws
+const FRAME_MS = 1000 / FPS;
+const RES_SCALE = LOW_END ? 0.70 : 0.82;   // internal canvas resolution multiplier
+const DPR_CAP = 1.5;
+
+const resize = () => {
+  const dpr = Math.max(1, Math.min(DPR_CAP, window.devicePixelRatio || 1));
+  const w = Math.max(1, window.innerWidth);
+  const h = Math.max(1, window.innerHeight);
+
+  canvas.width = Math.round(w * dpr * RES_SCALE);
+  canvas.height = Math.round(h * dpr * RES_SCALE);
+  canvas.style.width = `${w}px`;
+  canvas.style.height = `${h}px`;
+
+  // Map drawing coords to CSS pixels while rendering at lower res.
+  ctx.setTransform(dpr * RES_SCALE, 0, 0, dpr * RES_SCALE, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+};
+window.addEventListener("resize", resize, { passive: true });
+resize();
+
+const maxParticles = () => {
+  const base = LOW_END ? 520 : 760;
+  return Math.round(base * (isMoreEpic() ? 1.15 : 1.0));
+};
+
+const alloc = () => (pool.pop() || {});
+const free = (p) => { pool.push(p); };
+
+const push = (p) => {
+  const cap = maxParticles();
+  // hard cap to avoid stalls
+  if (particles.length >= cap) {
+    // drop some oldest
+    particles.splice(0, Math.ceil((particles.length - cap + 1) * 0.6));
+  }
+  particles.push(p);
+};
+
+const start = () => {
+  if (rafId) return;
+  lastT = performance.now();
+  lastDraw = 0;
+  rafId = requestAnimationFrame(tick);
+};
+
+const tick = (t) => {
+  const dt = Math.min(0.04, Math.max(0.001, (t - lastT) / 1000));
+  lastT = t;
+
+  if (t - lastDraw < FRAME_MS) {
     rafId = requestAnimationFrame(tick);
-  };
+    return;
+  }
+  lastDraw = t;
 
-  const tick = (t) => {
-    const dt = Math.min(0.033, Math.max(0.001, (t - lastT) / 1000));
-    lastT = t;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  ctx.clearRect(0, 0, w, h);
 
-    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-
-    for (let i = particles.length - 1; i >= 0; i--) {
-      const p = particles[i];
-      p.age += dt;
-      if (p.age >= p.ttl) {
-        particles.splice(i, 1);
-        continue;
-      }
-
-      p.vy += p.g * dt;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.rot += p.vr * dt;
-
-      const life = 1 - (p.age / p.ttl);
-      const a = Math.max(0, Math.min(1, life));
-
-      if (p.type === "laser") {
-        const sp = Math.max(1, Math.hypot(p.vx, p.vy));
-        const ux = p.vx / sp;
-        const uy = p.vy / sp;
-        const ex = p.x - ux * p.len;
-        const ey = p.y - uy * p.len;
-
-        ctx.save();
-        ctx.globalAlpha = a;
-        ctx.globalCompositeOperation = "lighter";
-
-        const grad = ctx.createLinearGradient(p.x, p.y, ex, ey);
-        grad.addColorStop(0, p.color);
-        grad.addColorStop(1, "rgba(255,255,255,0)");
-
-        // Glow pass (motion blur-ish)
-        ctx.lineWidth = p.w * 2.4;
-        ctx.strokeStyle = grad;
-        ctx.shadowBlur = 18;
-        ctx.shadowColor = p.color;
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y);
-        ctx.lineTo(ex, ey);
-        ctx.stroke();
-
-        // Core pass
-        ctx.shadowBlur = 0;
-        ctx.lineWidth = p.w;
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y);
-        ctx.lineTo(ex, ey);
-        ctx.stroke();
-        ctx.restore();
-      } else {
-        // Confetti with a small velocity trail (fake motion blur)
-        const trail = Math.min(0.07, 0.02 + Math.hypot(p.vx, p.vy) / 7000);
-
-        ctx.save();
-        ctx.globalAlpha = a * 0.35;
-        ctx.translate(p.x - p.vx * trail, p.y - p.vy * trail);
-        ctx.rotate(p.rot);
-        ctx.fillStyle = p.color;
-        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-        ctx.restore();
-
-        ctx.save();
-        ctx.globalAlpha = a;
-        ctx.translate(p.x, p.y);
-        ctx.rotate(p.rot);
-        ctx.fillStyle = p.color;
-        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-        ctx.restore();
-      }
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.age += dt;
+    if (p.age >= p.ttl) {
+      particles[i] = particles[particles.length - 1];
+      particles.pop();
+      free(p);
+      continue;
     }
 
-    if (particles.length) {
-      rafId = requestAnimationFrame(tick);
+    p.vy += p.g * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.rot += p.vr * dt;
+
+    const life = 1 - (p.age / p.ttl);
+    const a = life <= 0 ? 0 : (life >= 1 ? 1 : life);
+
+    if (p.type === "laser") {
+      // cheaper "laser": single glow stroke (no per-frame gradients)
+      const sp = Math.max(1, Math.hypot(p.vx, p.vy));
+      const ux = p.vx / sp;
+      const uy = p.vy / sp;
+      const ex = p.x - ux * p.len;
+      const ey = p.y - uy * p.len;
+
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = a;
+
+      ctx.strokeStyle = p.color;
+      ctx.lineCap = "round";
+      ctx.shadowBlur = 14;
+      ctx.shadowColor = p.color;
+
+      // glow pass
+      ctx.lineWidth = p.w * 2.2;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+
+      // core pass
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = p.w;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
     } else {
-      rafId = 0;
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = a;
+
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
     }
-  };
+  }
 
-  const burst = (x, y, opts = {}) => {
-    const {
-      count = 32,
-      palette = ["#fff"],
-      power = 1,
-      gravity = 2200,
-      spread = 1,
-      size = 1,
-      ttl = 1.1,
-    } = opts;
+  // reset state
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+  ctx.globalCompositeOperation = "source-over";
 
-    for (let i = 0; i < count; i++) {
-      // Upward explosion with wide spread
-      const ang = (Math.random() * Math.PI) + Math.PI; // pi..2pi (mostly upward)
-      const angJitter = (Math.random() - 0.5) * 0.55 * spread;
-      const a = ang + angJitter;
+  if (particles.length) {
+    rafId = requestAnimationFrame(tick);
+  } else {
+    rafId = 0;
+  }
+};
 
-      const speed = (520 + Math.random() * 980) * power;
-      const vx = Math.cos(a) * speed;
-      const vy = Math.sin(a) * speed;
+const burst = (x, y, opts = {}) => {
+  const {
+    count = 18,
+    palette = ["#fff"],
+    power = 1,
+    gravity = 2200,
+    spread = 1,
+    size = 1,
+    ttl = 1.05,
+  } = opts;
 
-      const w = (4 + Math.random() * 5) * size;
-      const h = (8 + Math.random() * 16) * size;
-      const vr = (Math.random() * 12 - 6);
-      const color = palette[Math.floor(Math.random() * palette.length)];
-      const pttl = ttl + (Math.random() * 0.5);
+  const n = Math.max(0, Math.min(220, Math.round((count || 0) * COUNT_Q)));
+  if (!n) return;
 
-      particles.push({
-        x: x + (Math.random() - 0.5) * 4,
-        y: y + (Math.random() - 0.5) * 4,
-        vx,
-        vy,
-        g: gravity,
-        w,
-        h,
-        rot: Math.random() * Math.PI,
-        vr,
-        color,
-        ttl: pttl,
-        age: 0,
-      });
-    }
-    start();
-  };
+  for (let i = 0; i < n; i++) {
+    // Upward explosion with wide spread
+    const ang = (Math.random() * Math.PI) + Math.PI; // pi..2pi (mostly upward)
+    const angJitter = (Math.random() - 0.5) * 0.55 * spread;
+    const a = ang + angJitter;
 
-  const storm = (opts = {}) => {
-    const {
-      count = 260,
-      palette = ["#fff"],
-      gravity = 2600,
-    } = opts;
+    const speed = (520 + Math.random() * 980) * power;
+    const vx = Math.cos(a) * speed;
+    const vy = Math.sin(a) * speed;
 
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    for (let i = 0; i < count; i++) {
-      const x = Math.random() * w;
-      const y = -20 - Math.random() * 120;
-      const vx = (Math.random() - 0.5) * 380;
-      const vy = 180 + Math.random() * 420;
+    const w = (4 + Math.random() * 5) * size;
+    const h = (8 + Math.random() * 16) * size;
+    const vr = (Math.random() * 12 - 6);
+    const color = palette[Math.floor(Math.random() * palette.length)];
+    const pttl = ttl + (Math.random() * 0.5);
 
-      const pw = 4 + Math.random() * 6;
-      const ph = 10 + Math.random() * 18;
-      const vr = (Math.random() * 10 - 5);
-      const color = palette[Math.floor(Math.random() * palette.length)];
-      const pttl = 1.8 + Math.random() * 0.9;
+    const p = alloc();
+    p.type = "conf";
+    p.x = x + (Math.random() - 0.5) * 4;
+    p.y = y + (Math.random() - 0.5) * 4;
+    p.vx = vx;
+    p.vy = vy;
+    p.g = gravity;
+    p.w = w;
+    p.h = h;
+    p.rot = Math.random() * Math.PI;
+    p.vr = vr;
+    p.color = color;
+    p.ttl = pttl;
+    p.age = 0;
 
-      particles.push({
-        x,
-        y,
-        vx,
-        vy,
-        g: gravity,
-        w: pw,
-        h: ph,
-        rot: Math.random() * Math.PI,
-        vr,
-        color,
-        ttl: pttl,
-        age: 0,
-      });
-    }
-    start();
-  };
+    push(p);
+  }
+  start();
+};
 
+const storm = (opts = {}) => {
+  const {
+    count = 140,
+    palette = ["#fff"],
+    gravity = 2600,
+  } = opts;
 
-  const lasers = (x, y, opts = {}) => {
-    const {
-      count = 10,
-      palette = ["#fff"],
-      power = 1,
-      ttl = 0.55,
-      spread = 1,
-      width = 2,
-      length = 180,
-      gravity = 0,
-    } = opts;
+  const w = window.innerWidth;
+  const n = Math.max(0, Math.min(720, Math.round((count || 0) * COUNT_Q)));
+  if (!n) return;
 
-    for (let i = 0; i < count; i++) {
-      const a = (Math.random() * Math.PI * 2) + ((Math.random() - 0.5) * 0.35 * spread);
-      const speed = (900 + Math.random() * 1400) * power;
-      const vx = Math.cos(a) * speed;
-      const vy = Math.sin(a) * speed;
+  for (let i = 0; i < n; i++) {
+    const p = alloc();
+    p.type = "conf";
+    p.x = Math.random() * w;
+    p.y = -20 - Math.random() * 140;
+    p.vx = (Math.random() - 0.5) * 320;
+    p.vy = 160 + Math.random() * 380;
 
-      const color = palette[Math.floor(Math.random() * palette.length)];
-      const pttl = ttl + (Math.random() * 0.22);
+    p.w = 4 + Math.random() * 6;
+    p.h = 10 + Math.random() * 16;
+    p.vr = (Math.random() * 10 - 5);
+    p.color = palette[Math.floor(Math.random() * palette.length)];
+    p.ttl = 1.45 + Math.random() * 0.85;
+    p.age = 0;
+    p.g = gravity;
+    p.rot = Math.random() * Math.PI;
 
-      particles.push({
-        type: "laser",
-        x,
-        y,
-        vx,
-        vy,
-        g: gravity,
-        w: (width + Math.random() * width * 0.6),
-        len: length * (0.75 + Math.random() * 0.7),
-        color,
-        ttl: pttl,
-        age: 0,
-        rot: 0,
-        vr: 0,
-        h: 0,
-      });
-    }
-    start();
-  };
+    push(p);
+  }
+  start();
+};
 
-  FX = { burst, storm, lasers, resize, gridEl: grid, slamLayer };
+const lasers = (x, y, opts = {}) => {
+  const {
+    count = 6,
+    palette = ["#fff"],
+    power = 1,
+    ttl = 0.55,
+    spread = 1,
+    width = 2,
+    length = 180,
+    gravity = 0,
+  } = opts;
+
+  const n = Math.max(0, Math.min(140, Math.round((count || 0) * (LOW_END ? 0.75 : 1))));
+  if (!n) return;
+
+  for (let i = 0; i < n; i++) {
+    const a = (Math.random() * Math.PI * 2) + ((Math.random() - 0.5) * 0.35 * spread);
+    const speed = (900 + Math.random() * 1400) * power;
+    const vx = Math.cos(a) * speed;
+    const vy = Math.sin(a) * speed;
+
+    const p = alloc();
+    p.type = "laser";
+    p.x = x;
+    p.y = y;
+    p.vx = vx;
+    p.vy = vy;
+    p.g = gravity;
+    p.w = (width + Math.random() * width * 0.6);
+    p.len = length * (0.75 + Math.random() * 0.7);
+    p.color = palette[Math.floor(Math.random() * palette.length)];
+    p.ttl = (ttl + (Math.random() * 0.22));
+    p.age = 0;
+    p.rot = 0;
+    p.vr = 0;
+    p.h = 0;
+
+    push(p);
+  }
+  start();
+};
+
+FX = { burst, storm, lasers, resize, gridEl: grid, slamLayer, q: { LOW_END, COUNT_Q, FPS, RES_SCALE } };
 }
 
 
@@ -1209,8 +1249,7 @@ function epicAppHit(level) {
 
 
 function epicBookFinishBoost(originTile, { trackerColor = "#8cc0ff", bookRgb = [200, 200, 200], didCompleteTracker = false } = {}) {
-  // A "bigger than chapter" blast on book completion.
-  // If it also completes the tracker, we keep this punch but let TotalEskalation do the real overkill.
+  // Bigger-than-chapter punch, optimized: fewer particles, more "screen language".
   ensureFxLayer();
 
   const rect = originTile.getBoundingClientRect();
@@ -1225,34 +1264,36 @@ function epicBookFinishBoost(originTile, { trackerColor = "#8cc0ff", bookRgb = [
     "rgb(255, 240, 120)",
   ];
 
-  // Two-stage burst feels more "video game" than one fat burst.
-  FX.burst(x, y, { count: didCompleteTracker ? 140 : 110, palette, power: 1.35, gravity: 2550, spread: 1.28, size: 1.08, ttl: 1.25 });
+  const q = (FX && FX.q ? (FX.q.COUNT_Q || 1) : 1);
+  const c1 = Math.round((didCompleteTracker ? 72 : 58) * q);
+  const c2 = Math.round((didCompleteTracker ? 52 : 40) * q);
+
+  FX.burst(x, y, { count: c1, palette, power: 1.35, gravity: 2550, spread: 1.26, size: 1.14, ttl: 1.18 });
   window.setTimeout(() => {
-    FX.burst(x, y, { count: didCompleteTracker ? 110 : 85, palette, power: 1.15, gravity: 2650, spread: 1.15, size: 1.02, ttl: 1.15 });
-  }, 120);
+    FX.burst(x, y, { count: c2, palette, power: 1.15, gravity: 2650, spread: 1.12, size: 1.08, ttl: 1.10 });
+  }, 110);
 
-  // Extra halo ring
+  // Halos are cheap but feel huge.
   epicHaloAt(x, y, bookRgb, didCompleteTracker ? 4 : 2, false);
+  window.setTimeout(() => epicHaloAt(x, y, bookRgb, didCompleteTracker ? 4 : 2, false), 140);
 
-  // MORE EPIC: additional lasers + EPIC slams + grid pulse
+  // MORE EPIC: small laser burst + slam (kept modest for perf)
   if (isMoreEpic()) {
-    epicFlashLaserGrid({ intensity: didCompleteTracker ? 1.0 : 0.7, duration: didCompleteTracker ? 680 : 520 });
-    epicSlamOverlay({ count: didCompleteTracker ? 5 : 3, intensity: didCompleteTracker ? 1.5 : 1.2, text: "EPIC" });
+    epicFlashLaserGrid({ intensity: didCompleteTracker ? 0.95 : 0.7, duration: didCompleteTracker ? 620 : 420 });
+    epicSlamOverlay({ count: didCompleteTracker ? 4 : 2, intensity: didCompleteTracker ? 1.35 : 1.1, text: "EPIC" });
 
     FX.lasers(x, y, {
-      count: didCompleteTracker ? 28 : 18,
+      count: didCompleteTracker ? 14 : 10,
       palette,
-      power: didCompleteTracker ? 1.35 : 1.2,
-      ttl: didCompleteTracker ? 0.72 : 0.6,
-      spread: 1.35,
-      width: didCompleteTracker ? 2.6 : 2.1,
-      length: didCompleteTracker ? 320 : 280,
+      power: didCompleteTracker ? 1.25 : 1.12,
+      ttl: didCompleteTracker ? 0.62 : 0.52,
+      spread: 1.25,
+      width: didCompleteTracker ? 2.6 : 2.2,
+      length: didCompleteTracker ? 300 : 260,
     });
   }
 }
-
-
-function epicBurstTile(tile, { level = 1, trackerColor = "#8cc0ff", bookRgb = [200, 200, 200], wave = false } = {}) {
+function epicBurstTile(tile, { level = 1, trackerColor = "#8cc0ff", bookRgb = [200, 200, 200], wave = false, particles = "auto" } = {}) {
   ensureFxLayer();
 
   const more = isMoreEpic();
@@ -1273,7 +1314,7 @@ function epicBurstTile(tile, { level = 1, trackerColor = "#8cc0ff", bookRgb = [2
   // Halo ring (screen-space so it survives re-renders)
   epicHaloAt(x, y, bookRgb, level, wave);
 
-  // Particles (gravity confetti)
+  // Palette (book + tracker + highlights)
   const trackerRgb = hexToRgb(trackerColor || "#8cc0ff");
   const palette = [
     `rgb(${bookRgb[0]}, ${bookRgb[1]}, ${bookRgb[2]})`,
@@ -1282,49 +1323,55 @@ function epicBurstTile(tile, { level = 1, trackerColor = "#8cc0ff", bookRgb = [2
     "rgb(255, 240, 120)",
   ];
 
-  // Escalation: chapter -> book -> tracker (+ MORE EPIC multiplier)
-  const baseCount = wave
-    ? (level >= 4 ? 14 : (level >= 2 ? 10 : 8))
-    : (level >= 4 ? 160 : (level >= 2 ? 85 : 42));
+  // Particle mode: keep it dramatic but light.
+  let mode = particles;
+  if (mode === "auto") mode = wave ? "micro" : "full";
 
-  const modeMult = more ? 1.55 : 1.0;
-  const tierMult = level >= 4 ? 1.35 : (level >= 2 ? 1.18 : 1.0);
-  const waveMult = wave ? 0.72 : 1.0;
-  const mult = modeMult * tierMult * waveMult;
+  const q = (FX && FX.q ? (FX.q.COUNT_Q || 1) : 1);
 
-  const count = Math.round(baseCount * (more ? 1.25 : 1.0));
-  const power = (wave ? 0.62 : (level >= 4 ? 1.65 : (level >= 2 ? 1.3 : 1.08))) * mult;
-  const spread = (wave ? 0.9 : (level >= 4 ? 1.35 : (level >= 2 ? 1.22 : 1.05))) * (more ? 1.18 : 1.0);
-  const gravity = (level >= 4 ? 2800 : (level >= 2 ? 2500 : 2300)) * (more ? 1.12 : 1.0);
-  const size = (wave ? 0.85 : (level >= 4 ? 1.2 : (level >= 2 ? 1.05 : 1.0))) * (more ? 1.12 : 1.0);
-  const ttl = (wave ? 0.95 : (level >= 4 ? 1.35 : (level >= 2 ? 1.2 : 1.05))) * (more ? 1.1 : 1.0);
+  let count = 0;
+  if (mode === "none") {
+    count = 0;
+  } else if (mode === "micro") {
+    count = wave
+      ? (level >= 4 ? 4 : (level >= 2 ? 3 : 2))
+      : (level >= 4 ? 8 : (level >= 2 ? 6 : 5));
+  } else { // full
+    count = wave
+      ? (level >= 4 ? 6 : (level >= 2 ? 5 : 3))
+      : (level >= 4 ? 38 : (level >= 2 ? 24 : 14));
+  }
 
-  FX.burst(x, y, { count, palette, power, gravity, spread, size, ttl });
+  // MORE EPIC: increase feel via power/size; only slightly more particles.
+  count = Math.round(count * q * (more ? 1.12 : 1.0));
+  const power = (wave ? 0.62 : (level >= 4 ? 1.55 : (level >= 2 ? 1.25 : 1.05))) * (more ? 1.14 : 1.0);
+  const spread = (wave ? 0.92 : (level >= 4 ? 1.28 : (level >= 2 ? 1.15 : 1.02))) * (more ? 1.12 : 1.0);
+  const gravity = (level >= 4 ? 2700 : (level >= 2 ? 2500 : 2300)) * (more ? 1.08 : 1.0);
+  const size = (wave ? 0.9 : (level >= 4 ? 1.18 : (level >= 2 ? 1.06 : 1.0))) * (more ? 1.10 : 1.0);
+  const ttl = (wave ? 0.92 : (level >= 4 ? 1.22 : (level >= 2 ? 1.12 : 1.03))) * (more ? 1.06 : 1.0);
 
-  // MORE EPIC: lasers + overlays + grid
-  if (more) {
-    const laserCount = wave
-      ? (level >= 4 ? 6 : (level >= 2 ? 4 : 3))
-      : (level >= 4 ? 22 : (level >= 2 ? 14 : 9));
+  if (count > 0) {
+    FX.burst(x, y, { count, palette, power, gravity, spread, size, ttl });
+  }
 
+  // MORE EPIC extras: keep counts low, rely on light DOM FX (grid/slams/halo).
+  if (more && !wave) {
+    const laserCount = (level >= 4 ? 10 : (level >= 2 ? 6 : 4));
     FX.lasers(x, y, {
       count: laserCount,
       palette,
-      power: (level >= 4 ? 1.25 : (level >= 2 ? 1.1 : 0.95)) * (wave ? 0.7 : 1.0),
-      ttl: wave ? 0.35 : (level >= 4 ? 0.65 : 0.52),
-      spread: wave ? 0.9 : 1.25,
-      width: wave ? 1.2 : (level >= 4 ? 2.4 : 2.0),
-      length: wave ? 120 : (level >= 4 ? 300 : 240),
+      power: (level >= 4 ? 1.2 : (level >= 2 ? 1.05 : 0.95)),
+      ttl: (level >= 4 ? 0.58 : 0.48),
+      spread: 1.18,
+      width: (level >= 4 ? 2.4 : 2.0),
+      length: (level >= 4 ? 290 : 240),
     });
 
-    if (!wave) {
-      const slamCount = level >= 4 ? 3 : (level >= 2 ? 2 : 1);
-      epicSlamOverlay({ count: slamCount, intensity: level >= 4 ? 1.25 : (level >= 2 ? 1.05 : 0.9), text: "EPIC" });
+    const slamCount = level >= 4 ? 2 : (level >= 2 ? 1 : 0);
+    if (slamCount) epicSlamOverlay({ count: slamCount, intensity: level >= 4 ? 1.2 : 1.0, text: "EPIC" });
 
-      // Small grid flash for the bigger moments
-      if (level >= 2) {
-        epicFlashLaserGrid({ intensity: level >= 4 ? 0.9 : 0.55, duration: level >= 4 ? 520 : 320 });
-      }
+    if (level >= 2) {
+      epicFlashLaserGrid({ intensity: level >= 4 ? 0.85 : 0.5, duration: level >= 4 ? 420 : 260 });
     }
   }
 }
@@ -1418,46 +1465,62 @@ function epicWaveFromTile(originTile, { level = 2, trackerColor = "#8cc0ff", boo
   const tiles = Array.from(chaptersGrid.querySelectorAll(".chapterTile"));
   if (tiles.length < 2) return;
 
-  const o = originTile.getBoundingClientRect();
-  const ox = o.left + o.width / 2;
-  const oy = o.top + o.height / 2;
+  // Use offsets (cheaper than getBoundingClientRect for every tile).
+  const ox = originTile.offsetLeft + originTile.offsetWidth / 2;
+  const oy = originTile.offsetTop + originTile.offsetHeight / 2;
 
   // Sort by distance → creates the "wave"
   const withDist = tiles.map((t) => {
-    const r = t.getBoundingClientRect();
-    const x = r.left + r.width / 2;
-    const y = r.top + r.height / 2;
+    const x = t.offsetLeft + t.offsetWidth / 2;
+    const y = t.offsetTop + t.offsetHeight / 2;
     const d = Math.hypot(x - ox, y - oy);
     return { t, d };
   }).sort((a, b) => a.d - b.d);
 
-  // For very large grids keep it snappy (and not too heavy)
-  const perTileDelay = tiles.length > 120 ? 2.0 : (tiles.length > 80 ? 2.2 : 3.0);
+  // Delay shaping: keep it snappy (and stable) on big chapter grids.
+  const perTileDelay = tiles.length > 120 ? 3.2 : (tiles.length > 80 ? 3.6 : 4.2);
 
-  // Compute the wave runtime (max delay + animation duration) and lock until it is done
   const maxD = withDist.length ? withDist[withDist.length - 1].d : 0;
-  const maxDelay = Math.min(1500, 120 + Math.round(maxD / perTileDelay));
-  lockEpic(maxDelay + 850);
+  const maxDelay = Math.min(1400, 120 + Math.round(maxD / perTileDelay));
+  lockEpic(maxDelay + 820);
 
   const originCh = originTile?.dataset?.ch;
-  withDist.forEach(({ t, d }) => {
+
+  // Reduce timer overhead: group into ~20ms buckets.
+  const bucketMs = tiles.length > 100 ? 26 : 20;
+  const buckets = new Map(); // delay -> [chapterId]
+  const spawnStride = tiles.length > 120 ? 5 : (tiles.length > 80 ? 3 : 2);
+
+  withDist.forEach(({ t, d }, idx) => {
     const ch = t.dataset.ch;
-    // Let the initial click stay "special"; wave starts with the neighbors.
     if (originCh && ch === originCh) return;
 
-    const delay = Math.min(1500, 120 + Math.round(d / perTileDelay));
+    const delay = Math.min(1400, 120 + Math.round(d / perTileDelay));
+    const bucket = Math.round(delay / bucketMs) * bucketMs;
+
+    if (!buckets.has(bucket)) buckets.set(bucket, []);
+    buckets.get(bucket).push({ ch, idx });
+  });
+
+  const keys = Array.from(buckets.keys()).sort((a, b) => a - b);
+  keys.forEach((delay) => {
     window.setTimeout(() => {
-      const live = chaptersGrid.querySelector(`[data-ch="${CSS.escape(String(ch))}"]`);
-      if (!live) return;
-      epicBurstTile(live, { level, trackerColor, bookRgb, wave: true });
+      const list = buckets.get(delay) || [];
+      for (const item of list) {
+        const live = chaptersGrid.querySelector(`[data-ch="${CSS.escape(String(item.ch))}"]`);
+        if (!live) continue;
+
+        // Particle trick: only some tiles spawn confetti; others still pop+halo.
+        const particles = (tiles.length <= 70 || (item.idx % spawnStride === 0)) ? "micro" : "none";
+        epicBurstTile(live, { level, trackerColor, bookRgb, wave: true, particles });
+      }
     }, delay);
   });
 }
 
 function epicTotalEskalation(originTile, { trackerColor = "#8cc0ff", bookRgb = [200, 200, 200] } = {}) {
-  // Hard lock: tracker finish is a longer chain
-  lockEpic(5200);
-
+  // Tracker finish: keep the spectacle, cap the compute.
+  lockEpic(isMoreEpic() ? 4800 : 4200);
   ensureFxLayer();
 
   // Screen flash (double pulse)
@@ -1468,19 +1531,17 @@ function epicTotalEskalation(originTile, { trackerColor = "#8cc0ff", bookRgb = [
     flash.addEventListener("animationend", () => flash.remove(), { once: true });
   };
   mkFlash();
-  window.setTimeout(mkFlash, 180);
+  window.setTimeout(mkFlash, 170);
 
-  // Laser grid (Mission-Impossible vibe) + EPIC slams
+  // Grid + slams (cheap, reads as "huge")
   if (isMoreEpic()) {
-    epicFlashLaserGrid({ intensity: 1.0, duration: 980 });
-    epicSlamOverlay({ count: 8, intensity: 1.8, text: "EPIC" });
+    epicFlashLaserGrid({ intensity: 1.0, duration: 900 });
+    epicSlamOverlay({ count: 6, intensity: 1.7, text: "EPIC" });
   } else {
-    // still a small grid pulse for tracker completion
-    epicFlashLaserGrid({ intensity: 0.7, duration: 520 });
-    epicSlamOverlay({ count: 4, intensity: 1.2, text: "EPIC" });
+    epicFlashLaserGrid({ intensity: 0.78, duration: 520 });
+    epicSlamOverlay({ count: 3, intensity: 1.15, text: "EPIC" });
   }
 
-  // Big screen particle storm (gravity confetti)
   const o = originTile.getBoundingClientRect();
   const ox = o.left + o.width / 2;
   const oy = o.top + o.height / 2;
@@ -1495,46 +1556,79 @@ function epicTotalEskalation(originTile, { trackerColor = "#8cc0ff", bookRgb = [
     "rgb(150, 255, 210)",
   ];
 
-  // Escalation stack:
-  // 1) huge burst at the clicked tile
-  // 2) follow-up burst
-  // 3) "side cannons" (two extra bursts)
-  // 4) big storm
-  FX.burst(ox, oy, { count: 360, palette, power: 2.05, gravity: 2700, spread: 1.45, size: 1.25, ttl: 1.45 });
+  const q = (FX && FX.q ? (FX.q.COUNT_Q || 1) : 1);
 
-  // Laser beams from the clicked tile
-  FX.lasers(ox, oy, {
-    count: isMoreEpic() ? 72 : 34,
+  // Main burst (big, but not a thousand particles)
+  FX.burst(ox, oy, {
+    count: Math.round((isMoreEpic() ? 220 : 150) * q),
     palette,
-    power: isMoreEpic() ? 1.55 : 1.2,
+    power: isMoreEpic() ? 2.0 : 1.75,
+    gravity: 2750,
+    spread: 1.38,
+    size: isMoreEpic() ? 1.30 : 1.18,
+    ttl: isMoreEpic() ? 1.45 : 1.30,
+  });
+
+  // Laser beams from the clicked tile (moderate count, thicker beams)
+  FX.lasers(ox, oy, {
+    count: isMoreEpic() ? 28 : 18,
+    palette,
+    power: isMoreEpic() ? 1.55 : 1.25,
     ttl: isMoreEpic() ? 0.85 : 0.65,
-    spread: 1.4,
-    width: isMoreEpic() ? 3.0 : 2.2,
+    spread: 1.35,
+    width: isMoreEpic() ? 3.0 : 2.3,
     length: isMoreEpic() ? 420 : 320,
   });
+
+  // Follow-up bursts + side cannons (big shapes, low count)
   window.setTimeout(() => {
-    FX.burst(ox, oy, { count: 280, palette, power: 1.75, gravity: 2850, spread: 1.3, size: 1.15, ttl: 1.35 });
+    FX.burst(ox, oy, {
+      count: Math.round((isMoreEpic() ? 140 : 95) * q),
+      palette,
+      power: isMoreEpic() ? 1.75 : 1.5,
+      gravity: 2900,
+      spread: 1.28,
+      size: isMoreEpic() ? 1.22 : 1.10,
+      ttl: isMoreEpic() ? 1.35 : 1.25,
+    });
   }, 140);
 
   window.setTimeout(() => {
-    FX.burst(60, window.innerHeight - 60, { count: 190, palette, power: 1.55, gravity: 3000, spread: 1.35, size: 1.1, ttl: 1.45 });
-    FX.burst(window.innerWidth - 60, window.innerHeight - 60, { count: 190, palette, power: 1.55, gravity: 3000, spread: 1.35, size: 1.1, ttl: 1.45 });
-  }, 220);
+    FX.burst(70, window.innerHeight - 70, {
+      count: Math.round((isMoreEpic() ? 90 : 60) * q),
+      palette,
+      power: 1.45,
+      gravity: 3000,
+      spread: 1.35,
+      size: 1.12,
+      ttl: 1.35,
+    });
+    FX.burst(window.innerWidth - 70, window.innerHeight - 70, {
+      count: Math.round((isMoreEpic() ? 90 : 60) * q),
+      palette,
+      power: 1.45,
+      gravity: 3000,
+      spread: 1.35,
+      size: 1.12,
+      ttl: 1.35,
+    });
+  }, 230);
 
+  // Storm (cheap illusion with limited count)
   window.setTimeout(() => {
-    FX.storm({ count: isMoreEpic() ? 1250 : 880, palette, gravity: isMoreEpic() ? 3600 : 3200 });
-  }, 320);
+    FX.storm({
+      count: isMoreEpic() ? 420 : 260,
+      palette,
+      gravity: isMoreEpic() ? 3400 : 3000,
+    });
+  }, 300);
 
-  // Extra halos for maximum overkill
+  // Extra halos for maximum overkill (cheap)
   epicHaloAt(ox, oy, bookRgb, 4, false);
-  window.setTimeout(() => epicHaloAt(ox, oy, bookRgb, 4, false), 160);
+  window.setTimeout(() => epicHaloAt(ox, oy, bookRgb, 4, false), 170);
+  if (isMoreEpic()) window.setTimeout(() => epicHaloAt(ox, oy, bookRgb, 4, false), 360);
 
-  if (isMoreEpic()) {
-    window.setTimeout(() => epicHaloAt(ox, oy, bookRgb, 4, false), 320);
-    window.setTimeout(() => epicHaloAt(ox, oy, bookRgb, 4, false), 520);
-  }
-
-  // A short satirical banner
+  // Banner (bigger, moving, stays longer)
   const banner = document.createElement("div");
   banner.className = "epic-banner epic-banner--mega" + (isMoreEpic() ? " epic-banner--more" : "");
   banner.textContent = "TRACKER FINISHED";
@@ -1542,9 +1636,7 @@ function epicTotalEskalation(originTile, { trackerColor = "#8cc0ff", bookRgb = [
   banner.style.setProperty("--bannerDur", `${bannerMs}ms`);
   document.body.appendChild(banner);
   window.setTimeout(() => banner.remove(), bannerMs);
-}
-
-// --- Firestore writes (progress) ---
+} (progress) ---
 function toggleChapter(tracker, bookId, ch) {
   const b = BOOK_BY_ID.get(bookId);
   if (!b) return;

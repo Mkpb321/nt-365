@@ -491,6 +491,7 @@ button{
 
 /* Epic Mode */
 .fxCanvas{
+  contain: paint;
   position: fixed;
   inset: 0;
   pointer-events: none;
@@ -499,6 +500,7 @@ button{
 
 /* Laser grid overlay (Mission-Impossible vibe) */
 .laserGrid{
+  contain: paint;
   position: fixed;
   inset: 0;
   pointer-events: none;
@@ -522,6 +524,7 @@ button{
 
 /* Big satirical "EPIC" slams with fake motion blur */
 .epic-slam-layer{
+  contain: paint;
   position: fixed;
   inset: 0;
   pointer-events: none;
@@ -540,7 +543,7 @@ button{
     0 10px 30px rgba(0,0,0,.18),
     0 0 18px rgba(255,255,255,.55);
   opacity: 0;
-  filter: blur(14px);
+  filter: blur(10px);
   animation: epic-slam var(--slamDur, 780ms) cubic-bezier(.08, 1.25, .18, 1) forwards;
 }
 @keyframes epic-slam{
@@ -551,11 +554,11 @@ button{
       translate(0px, -140px)
       rotate(var(--slamRot, 0deg))
       scale(calc(var(--slamScale, 1) * 1.35));
-    filter: blur(16px);
+    filter: blur(12px);
   }
   18%{
     opacity: 1;
-    filter: blur(3px);
+    filter: blur(2px);
   }
   46%{
     opacity: 1;
@@ -833,6 +836,7 @@ button{
   .laserGrid,
   .epic-slam,
   .fxCanvas{
+  contain: paint;
     animation: none !important;
     transition: none !important;
   }
