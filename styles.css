@@ -122,15 +122,51 @@ button{
 }
 .topbtn:active{ background: var(--_topbtnbg, var(--btnBg)); }
 
-#btnBack{ --_topbtnbg: #ffffff; background: var(--_topbtnbg); margin-left: 8px; }
+#btnBack,
+#btnMenu{
+  --_topbtnbg: #ffffff;
+  background: var(--_topbtnbg);
+  margin-left: 8px;
+  grid-column: 1;
+  justify-self: start;
+}
+
+#btnEditTracker{ --_topbtnbg: #ffffff; background: var(--_topbtnbg); }
 
 #btnAddTracker{ --_topbtnbg: var(--addSoft, var(--btnBg)); background: var(--_topbtnbg); }
 
-#btnEpic{ --_topbtnbg: var(--epcSoft, var(--btnBg)); background: var(--_topbtnbg); text-transform: uppercase; font-size: 11px; letter-spacing: .6px; width: auto; min-width: 44px; padding: 0 10px; }
-#btnEpic[aria-pressed="true"]{ --_topbtnbg: var(--epcStrong, var(--epcSoft, var(--btnBg))); }
-#btnEpic:active{ background: var(--epcStrong, var(--epcSoft, var(--btnBg))); }
+#btnEpic{ text-transform: uppercase; font-size: 11px; letter-spacing: .6px; }
 #btnEpic.moreEpic{ box-shadow: 0 0 0 2px rgba(255,255,255,.55), 0 10px 26px rgba(0,0,0,.10); animation: epic-epc-pulse 1100ms ease-in-out infinite; }
 @keyframes epic-epc-pulse{ 0%,100%{ transform: translateZ(0) scale(1); } 50%{ transform: translateZ(0) scale(1.04); } }
+
+/* Burger menu */
+.menuPanel{
+  position: absolute;
+  left: 8px;
+  top: calc(100% + 8px);
+  min-width: 180px;
+  padding: 8px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.98);
+  box-shadow: 0 14px 36px rgba(0,0,0,.12);
+  z-index: 10;
+}
+.menuItem{
+  width: 100%;
+  text-align: left;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 950;
+  background: rgba(21,19,43,.06);
+}
+.menuItem + .menuItem{ margin-top: 8px; }
+.menuItem:active{ background: rgba(21,19,43,.10); }
+
+#btnEpic{ background: var(--epcSoft, rgba(21,19,43,.06)); }
+#btnEpic[aria-pressed="true"]{ background: var(--epcStrong, var(--epcSoft, rgba(21,19,43,.06))); }
+#btnEpic:active{ background: var(--epcStrong, var(--epcSoft, rgba(21,19,43,.06))); }
+
+.menuPanel .menuItem#btnLogout{ background: rgba(21,19,43,.06); }
 
 .hidden{ display: none !important; }
 .view{ padding-top: 8px; }
@@ -240,6 +276,11 @@ button{
 }
 .pill:active{ background: var(--btnYearStrong, var(--btnYearSoft, var(--btnBg))); }
 
+.pill.danger{
+  background: rgba(235,132,132,.35);
+}
+.pill.danger:active{ background: rgba(235,132,132,1); }
+
 /* Chapters */
 .chapters{
   display: grid;
@@ -271,7 +312,8 @@ button{
   background: var(--chStrong, rgba(200,200,200,1));
 }
 
-#btnLogout{ --_topbtnbg: var(--addSoft, var(--btnBg)); background: var(--_topbtnbg); }
+/* legacy: logout used to be a topbar button; now it lives in the burger menu */
+.topbtn#btnLogout{ --_topbtnbg: var(--addSoft, var(--btnBg)); background: var(--_topbtnbg); }
 
 /* Login */
 .loginView{
@@ -789,11 +831,6 @@ button{
   46%{ transform: translate(-50%, -50%) scale(1.04) rotate(1deg); }
   90%{ opacity: 1; transform: translate(-50%, -50%) scale(1.02) rotate(0deg); }
   100%{ opacity: 0; transform: translate(-50%, -50%) scale(1.02) rotate(0deg); filter: blur(2px); }
-
-
-  18%{ opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
-  90%{ opacity: 1; transform: translate(-50%, -50%) scale(1); }
-  100%{ opacity: 0; transform: translate(-50%, -50%) scale(1); }
 }
 
 .epic-screen-confetti{

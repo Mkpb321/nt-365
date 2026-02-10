@@ -11,6 +11,7 @@ import {
   collection,
   doc,
   addDoc,
+  deleteDoc,
   updateDoc,
   onSnapshot,
   query,
@@ -188,14 +189,18 @@ const appEl = $("#app");
 // App UI
 const topbar = $("#topbar");
 const btnBack = $("#btnBack");
+const btnMenu = $("#btnMenu");
+const menuPanel = $("#menuPanel");
 const topTitle = $("#topTitle");
 const topSub = $("#topSub");
 const btnAddTracker = $("#btnAddTracker");
+const btnEditTracker = $("#btnEditTracker");
 const btnLogout = $("#btnLogout");
 const btnEpic = $("#btnEpic");
 
 const viewTrackers = $("#viewTrackers");
 const viewAddTracker = $("#viewAddTracker");
+const viewEditTracker = $("#viewEditTracker");
 const viewTracker = $("#viewTracker");
 const viewBook = $("#viewBook");
 
@@ -222,6 +227,14 @@ const btnSelectAll = $("#btnSelectAll");
 const btnSelectNone = $("#btnSelectNone");
 const btnAddCancel = $("#btnAddCancel");
 const addTrackerError = $("#addTrackerError");
+
+// Edit tracker UI
+const editTrackerForm = $("#editTrackerForm");
+const editTrackerName = $("#editTrackerName");
+const editColorSwatches = $("#editColorSwatches");
+const btnEditCancel = $("#btnEditCancel");
+const btnEditDelete = $("#btnEditDelete");
+const editTrackerError = $("#editTrackerError");
 
 /**
  * In-memory
@@ -260,6 +273,9 @@ let draftScope = "bible"; // bible | ot | nt | custom
 let draftBookIds = new Set([...OT_BOOK_IDS, ...NT_BOOK_IDS]);
 let draftColorHex = null;
 
+// Edit tracker draft state
+let editColorHex = null;
+
 setupAuth();
 
 function setupAuth() {
@@ -280,6 +296,7 @@ function setupAuth() {
   });
 
   btnLogout.addEventListener("click", async () => {
+    closeMenu();
     try {
       await signOut(auth);
     } catch {
@@ -326,13 +343,35 @@ function startAppOnce() {
     openAddTracker();
   });
 
+  // Burger menu (Home)
+  btnMenu.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleMenu();
+  });
+
+  menuPanel.addEventListener("click", (e) => {
+    // Keep clicks on menu items from immediately closing via document click
+    e.stopPropagation();
+  });
+
+  // Close menu on outside click / escape
+  document.addEventListener("click", () => closeMenu(), { passive: true });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeMenu();
+  });
+
   btnEpic.addEventListener("click", () => {
+    closeMenu();
     const prev = getEpicModeLevel();
     const next = prev === 0 ? 1 : (prev === 1 ? 2 : 0);
     setEpicModeLevel(next, { source: "user" });
   });
 
   btnBack.addEventListener("click", goBack);
+
+  btnEditTracker.addEventListener("click", () => {
+    openEditTracker();
+  });
 
 // Chapters interactions
 let pressedChapterTile = null;
@@ -391,6 +430,26 @@ chaptersGrid.addEventListener("click", (e) => {
 
   btnAddCancel.addEventListener("click", () => {
     setView("trackers");
+  });
+
+  // Edit tracker form
+  editTrackerForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    await confirmEditTracker();
+  });
+
+  btnEditCancel.addEventListener("click", () => {
+    setView("tracker");
+  });
+
+  btnEditDelete.addEventListener("click", async () => {
+    await deleteCurrentTracker();
+  });
+
+  editColorSwatches.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-color]");
+    if (!btn) return;
+    setEditColor(btn.dataset.color);
   });
 
   scopeRow.addEventListener("click", (e) => {
@@ -499,7 +558,7 @@ function applyRequestedNavigation() {
   const tid = requestedNav.trackerId;
   const bid = requestedNav.bookId;
 
-  if (v === "tracker" && tid && trackersById.has(tid)) {
+  if ((v === "tracker" || v === "edit") && tid && trackersById.has(tid)) {
     currentTrackerId = tid;
     currentBookId = null;
     const t = trackersById.get(tid);
@@ -528,7 +587,7 @@ function applyRequestedNavigation() {
 
 function normalizeNavigationAfterData() {
   // If we were on tracker/book but tracker is gone, go home
-  if ((currentView === "tracker" || currentView === "book") && currentTrackerId) {
+  if ((currentView === "tracker" || currentView === "edit" || currentView === "book") && currentTrackerId) {
     if (!trackersById.has(currentTrackerId)) {
       currentTrackerId = null;
       currentBookId = null;
@@ -560,16 +619,20 @@ function setView(v, opts = {}) {
 
   viewTrackers.classList.toggle("hidden", v !== "trackers");
   viewAddTracker.classList.toggle("hidden", v !== "add");
+  viewEditTracker.classList.toggle("hidden", v !== "edit");
   viewTracker.classList.toggle("hidden", v !== "tracker");
   viewBook.classList.toggle("hidden", v !== "book");
 
-  // Back button: show for tracker + book (not for add, because it has bottom cancel)
-  btnBack.classList.toggle("hidden", v === "trackers" || v === "add");
+  // Always close the home menu on navigation
+  closeMenu();
 
-  // Only on home
+  // Left controls: burger only on home, back only on tracker/book
+  btnMenu.classList.toggle("hidden", v !== "trackers");
+  btnBack.classList.toggle("hidden", !(v === "tracker" || v === "book"));
+
+  // Right actions
   btnAddTracker.classList.toggle("hidden", v !== "trackers");
-  btnEpic.classList.toggle("hidden", v !== "trackers");
-  btnLogout.classList.toggle("hidden", v !== "trackers");
+  btnEditTracker.classList.toggle("hidden", v !== "tracker");
 
   if (!skipSave) saveUiState();
   if (!skipRender) renderCurrentView();
@@ -592,6 +655,7 @@ function renderCurrentView() {
 
   if (currentView === "trackers") renderTrackers();
   else if (currentView === "add") renderAddTrackerView();
+  else if (currentView === "edit") renderEditTrackerView();
   else if (currentView === "tracker") renderTracker();
   else if (currentView === "book") renderBook();
 
@@ -618,6 +682,14 @@ function updateTopbar() {
     // Important: keep pills (Abbrechen/Hinzufügen) tinted in the add view
     // (updateTopbar runs after the add view render and would otherwise overwrite).
     const rgb = hexToRgb(draftColorHex || ui.lastTrackerColor || "#cccccc");
+    btnSoft = rgba(rgb, SOFT_A);
+    btnStrong = rgba(rgb, STRONG_A);
+  } else if (currentView === "edit") {
+    topTitle.textContent = "Tracker bearbeiten";
+    topSub.textContent = "";
+
+    // Keep buttons tinted in edit view
+    const rgb = hexToRgb(editColorHex || ui.lastTrackerColor || "#cccccc");
     btnSoft = rgba(rgb, SOFT_A);
     btnStrong = rgba(rgb, STRONG_A);
   } else if (currentView === "tracker" && tracker) {
@@ -680,6 +752,20 @@ function updateTopbar() {
     btnEpic.textContent = (lvl >= 2) ? "more epic" : "epic";
     btnEpic.classList.toggle("moreEpic", lvl >= 2);
   }
+}
+
+function toggleMenu() {
+  if (!menuPanel) return;
+  if (currentView !== "trackers") return;
+  const willOpen = menuPanel.classList.contains("hidden");
+  menuPanel.classList.toggle("hidden", !willOpen);
+  if (btnMenu) btnMenu.setAttribute("aria-expanded", willOpen ? "true" : "false");
+}
+
+function closeMenu() {
+  if (!menuPanel) return;
+  menuPanel.classList.add("hidden");
+  if (btnMenu) btnMenu.setAttribute("aria-expanded", "false");
 }
 
 // --- Home (Trackers list) ---
@@ -1636,7 +1722,9 @@ function epicTotalEskalation(originTile, { trackerColor = "#8cc0ff", bookRgb = [
   banner.style.setProperty("--bannerDur", `${bannerMs}ms`);
   document.body.appendChild(banner);
   window.setTimeout(() => banner.remove(), bannerMs);
-} (progress) ---
+}
+
+// --- Book (progress) ---
 function toggleChapter(tracker, bookId, ch) {
   const b = BOOK_BY_ID.get(bookId);
   if (!b) return;
@@ -1703,19 +1791,9 @@ function persistBookProgress(tracker, bookId, set, opts = {}) {
 
 // --- Add Tracker ---
 function buildAddTrackerUiOnce() {
-  // Swatches
   const palette = generatePalette();
-  colorSwatches.innerHTML = "";
-  palette.forEach((hex) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "swatchBtn";
-    btn.dataset.color = hex;
-    btn.style.background = hex;
-    btn.title = hex;
-    btn.setAttribute("aria-label", `Farbe ${hex}`);
-    colorSwatches.appendChild(btn);
-  });
+  buildColorSwatches(colorSwatches, palette);
+  buildColorSwatches(editColorSwatches, palette);
 
   // Book pickers
   buildBookPickGrid(pickGridOT, BOOKS.filter(b => b.testament === "ot"));
@@ -1729,6 +1807,21 @@ function buildAddTrackerUiOnce() {
 
   trackerNameInput.value = "";
   updateAddTrackerUI();
+}
+
+function buildColorSwatches(container, palette) {
+  if (!container) return;
+  container.innerHTML = "";
+  (palette || []).forEach((hex) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "swatchBtn";
+    btn.dataset.color = hex;
+    btn.style.background = hex;
+    btn.title = hex;
+    btn.setAttribute("aria-label", `Farbe ${hex}`);
+    container.appendChild(btn);
+  });
 }
 
 function buildBookPickGrid(container, books) {
@@ -1766,6 +1859,104 @@ function openAddTracker() {
 
 function renderAddTrackerView() {
   updateAddTrackerUI();
+}
+
+// --- Edit Tracker ---
+function openEditTracker() {
+  const t = getCurrentTracker();
+  if (!t) {
+    setView("trackers");
+    return;
+  }
+
+  editTrackerError.textContent = "";
+  editTrackerName.value = String(t.name || "");
+
+  const palette = Array.from(editColorSwatches.querySelectorAll("[data-color]")).map(el => el.dataset.color);
+  editColorHex = (isValidHexColor(t.color) ? t.color : null) || ui.lastTrackerColor || palette[15] || palette[0] || "#8cc0ff";
+
+  updateEditTrackerUI();
+  setView("edit");
+}
+
+function renderEditTrackerView() {
+  updateEditTrackerUI();
+}
+
+function setEditColor(hex) {
+  if (!isValidHexColor(hex)) return;
+  editColorHex = hex;
+  updateEditTrackerUI();
+}
+
+function updateEditTrackerUI() {
+  // Color swatches
+  editColorSwatches.querySelectorAll("[data-color]").forEach((btn) => {
+    btn.classList.toggle("selected", btn.dataset.color === editColorHex);
+  });
+
+  // Make pills & inputs reflect chosen color (same look-and-feel as add view)
+  const rgb = hexToRgb(editColorHex || ui.lastTrackerColor || "#cccccc");
+  const soft = rgba(rgb, SOFT_A);
+  const strong = rgba(rgb, STRONG_A);
+  const superSoft = rgba(rgb, SUPERSOFT_A);
+  appEl.style.setProperty("--draftSoft", soft);
+  appEl.style.setProperty("--draftStrong", strong);
+  appEl.style.setProperty("--draftSuperSoft", superSoft);
+  appEl.style.setProperty("--btnYearSoft", soft);
+  appEl.style.setProperty("--btnYearStrong", strong);
+}
+
+async function confirmEditTracker() {
+  editTrackerError.textContent = "";
+
+  const t = getCurrentTracker();
+  if (!t || !currentUser) return;
+
+  const name = String(editTrackerName.value || "").trim();
+  if (!name) {
+    editTrackerError.textContent = "Bitte einen Namen eingeben.";
+    return;
+  }
+
+  if (!editColorHex || !isValidHexColor(editColorHex)) {
+    editTrackerError.textContent = "Bitte eine Farbe auswählen.";
+    return;
+  }
+
+  try {
+    const ref = doc(db, "nt-365", currentUser.uid, "trackers", t.id);
+    await updateDoc(ref, {
+      name,
+      color: editColorHex,
+      updatedAt: serverTimestamp(),
+    });
+
+    ui.lastTrackerColor = editColorHex;
+    saveUiState();
+    setView("tracker");
+  } catch (err) {
+    console.error("Tracker update failed:", err);
+    editTrackerError.textContent = "Speichern fehlgeschlagen.";
+  }
+}
+
+async function deleteCurrentTracker() {
+  editTrackerError.textContent = "";
+  if (!currentUser || !currentTrackerId) return;
+
+  try {
+    const ref = doc(db, "nt-365", currentUser.uid, "trackers", currentTrackerId);
+    await deleteDoc(ref);
+
+    currentTrackerId = null;
+    currentBookId = null;
+    saveUiState();
+    setView("trackers");
+  } catch (err) {
+    console.error("Tracker delete failed:", err);
+    editTrackerError.textContent = "Löschen fehlgeschlagen.";
+  }
 }
 
 function setDraftScope(scope) {

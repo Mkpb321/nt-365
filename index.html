@@ -50,6 +50,7 @@
       <div class="topbarFill" aria-hidden="true"></div>
 
       <button class="topbtn hidden" id="btnBack" aria-label="Zurück">←</button>
+      <button class="topbtn hidden" id="btnMenu" aria-label="Menü" title="Menü">☰</button>
 
       <div class="topcenter" aria-live="polite">
         <div class="topTitle" id="topTitle">NT 365</div>
@@ -58,8 +59,13 @@
 
       <div class="topActions" id="topActions">
         <button class="topbtn" id="btnAddTracker" aria-label="Tracker hinzufügen" title="Tracker hinzufügen">＋</button>
-                <button class="topbtn" id="btnEpic" aria-label="Epic Mode" title="Epic Mode" aria-pressed="false">epic</button>
-<button class="topbtn" id="btnLogout" aria-label="Logout" title="Logout">⎋</button>
+        <button class="topbtn hidden" id="btnEditTracker" aria-label="Tracker bearbeiten" title="Tracker bearbeiten">✎</button>
+      </div>
+
+      <!-- Burger menu (Home) -->
+      <div class="menuPanel hidden" id="menuPanel" role="menu" aria-label="Menü">
+        <button class="menuItem" id="btnEpic" role="menuitem" aria-label="Epic Mode" aria-pressed="false">epic</button>
+        <button class="menuItem" id="btnLogout" role="menuitem" aria-label="Logout">Logout</button>
       </div>
     </header>
 
@@ -120,6 +126,29 @@
         <div class="actionsRow bottomActions">
           <button type="button" class="pill" id="btnAddCancel">Abbrechen</button>
           <button type="submit" class="pill" id="btnAddConfirm">Hinzufügen</button>
+        </div>
+      </form>
+    </main>
+
+    <!-- VIEW: EDIT TRACKER -->
+    <main class="view hidden" id="viewEditTracker" aria-label="Tracker bearbeiten">
+      <form class="addForm" id="editTrackerForm">
+        <div class="field">
+          <div class="fieldLabel">Name</div>
+          <input class="textInput" id="editTrackerName" type="text" maxlength="60" placeholder="Tracker-Name" required />
+        </div>
+
+        <div class="field">
+          <div class="fieldLabel">Farbe</div>
+          <div class="swatches" id="editColorSwatches" aria-label="Farbauswahl"></div>
+        </div>
+
+        <div class="formError" id="editTrackerError" aria-live="polite"></div>
+
+        <div class="actionsRow bottomActions">
+          <button type="button" class="pill" id="btnEditCancel">Abbrechen</button>
+          <button type="button" class="pill danger" id="btnEditDelete">Tracker löschen</button>
+          <button type="submit" class="pill" id="btnEditSave">Speichern</button>
         </div>
       </form>
     </main>
