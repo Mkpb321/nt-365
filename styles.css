@@ -126,6 +126,10 @@ button{
 
 #btnAddTracker{ --_topbtnbg: var(--addSoft, var(--btnBg)); background: var(--_topbtnbg); }
 
+#btnEpic{ --_topbtnbg: var(--epcSoft, var(--btnBg)); background: var(--_topbtnbg); text-transform: uppercase; font-size: 12px; letter-spacing: .6px; }
+#btnEpic[aria-pressed="true"]{ --_topbtnbg: var(--epcStrong, var(--epcSoft, var(--btnBg))); }
+#btnEpic:active{ background: var(--epcStrong, var(--epcSoft, var(--btnBg))); }
+
 .hidden{ display: none !important; }
 .view{ padding-top: 8px; }
 
@@ -256,6 +260,8 @@ button{
   font-variant-numeric: tabular-nums;
   user-select: none;
   touch-action: manipulation;
+  position: relative;
+  overflow: visible;
 }
 .chapterTile:active{ filter: none; }
 
@@ -478,4 +484,177 @@ button{
   font-size: 12px;
   color: rgba(21,19,43,.78);
   padding: 2px 2px 0;
+}
+
+
+/* Epic Mode */
+.fxCanvas{
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9997;
+}
+
+.epic-pressing{
+  transform: scale(0.94);
+  transition: transform 70ms ease-out;
+}
+
+/* While holding a chapter tile: the whole app subtly compresses too */
+.app.epic-app-pressing{
+  transform: scale(0.995);
+  transition: transform 70ms ease-out;
+}
+
+/* Combined press->pop + shake (single transform animation; avoids transform overrides) */
+.epic-burst{
+  animation: epic-burst 520ms cubic-bezier(.12, 1.35, .2, 1);
+}
+.epic-burst-soft{
+  animation: epic-burst-soft 480ms cubic-bezier(.12, 1.35, .2, 1);
+}
+
+@keyframes epic-burst{
+  0%{ transform: translate(0,0) scale(0.94); }
+  18%{ transform: translate(-1px, 1px) scale(1.12); }
+  32%{ transform: translate(2px, -1px) scale(1.08); }
+  46%{ transform: translate(-3px, -1px) scale(1.04); }
+  60%{ transform: translate(3px, 1px) scale(1.02); }
+  74%{ transform: translate(-2px, 0px) scale(1.01); }
+  100%{ transform: translate(0,0) scale(1); }
+}
+
+@keyframes epic-burst-soft{
+  0%{ transform: translate(0,0) scale(0.97); }
+  22%{ transform: translate(-1px, 1px) scale(1.06); }
+  44%{ transform: translate(1px, -1px) scale(1.03); }
+  66%{ transform: translate(-1px, 0px) scale(1.01); }
+  100%{ transform: translate(0,0) scale(1); }
+}
+
+/* Halo ring in screen space (survives DOM re-renders during wave) */
+.epic-halo-screen{
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 3px solid rgba(255,255,255,.8);
+  transform: translate(-50%, -50%) scale(0.18);
+  opacity: .95;
+  pointer-events: none;
+  animation: epic-halo 620ms ease-out forwards;
+  z-index: 9999;
+  box-shadow: 0 0 18px rgba(255,255,255,.28);
+}
+@keyframes epic-halo{
+  to{
+    transform: translate(-50%, -50%) scale(var(--haloScale, 8));
+    opacity: 0;
+  }
+}
+
+/* Global app punch */
+.app.epic-app-hit{
+  animation: epic-app-hit 520ms cubic-bezier(.14, 1.3, .2, 1);
+}
+.app.epic-app-mega{
+  animation: epic-app-mega 650ms cubic-bezier(.12, 1.35, .2, 1);
+}
+
+@keyframes epic-app-hit{
+  0%{ transform: scale(0.986); }
+  26%{ transform: scale(1.014); }
+  42%{ transform: translate(-1px, 1px) scale(1.012); }
+  58%{ transform: translate(1px, -1px) scale(1.008); }
+  74%{ transform: translate(-1px, 0px) scale(1.004); }
+  100%{ transform: translate(0,0) scale(1); }
+}
+
+@keyframes epic-app-mega{
+  0%{ transform: scale(0.975); }
+  26%{ transform: scale(1.04); }
+  38%{ transform: translate(-4px, 3px) scale(1.04); }
+  52%{ transform: translate(4px, -3px) scale(1.03); }
+  66%{ transform: translate(-3px, -1px) scale(1.02); }
+  78%{ transform: translate(2px, -1px) scale(1.01); }
+  100%{ transform: translate(0,0) scale(1); }
+}
+
+/* Escalation FX */
+.epic-flash{
+  position: fixed;
+  inset: 0;
+  background: rgba(255,255,255,.75);
+  pointer-events: none;
+  z-index: 9999;
+  animation: epic-flash 520ms ease-out forwards;
+}
+@keyframes epic-flash{
+  0%{ opacity: 0; }
+  18%{ opacity: 1; }
+  100%{ opacity: 0; }
+}
+
+.epic-banner{
+  position: fixed;
+  left: 50%;
+  top: 18%;
+  transform: translate(-50%, -50%);
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgba(21,19,43,.92);
+  color: #fff;
+  font-weight: 980;
+  letter-spacing: 1.2px;
+  font-size: 12px;
+  z-index: 10000;
+  pointer-events: none;
+  animation: epic-banner 4200ms ease-out forwards;
+  box-shadow: 0 12px 34px rgba(0,0,0,.18);
+}
+@keyframes epic-banner{
+  0%{ opacity: 0; transform: translate(-50%, -60%) scale(.92); }
+  18%{ opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+  90%{ opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100%{ opacity: 0; transform: translate(-50%, -50%) scale(1); }
+}
+
+.epic-screen-confetti{
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9998;
+  overflow: visible;
+}
+.screenPiece{
+  position: absolute;
+  border-radius: 2px;
+  transform: translate(-50%, -50%) translate(0px, 0px) rotate(0deg);
+  animation: epic-screen-piece var(--dur, 1400ms) cubic-bezier(.1,.9,.2,1) forwards;
+  filter: saturate(1.2);
+}
+@keyframes epic-screen-piece{
+  to{
+    transform:
+      translate(-50%, -50%)
+      translate(calc(var(--dx, 0) * 1px), calc(var(--dy, 0) * 1px))
+      rotate(calc(var(--rot, 0) * 1deg));
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce){
+  .epic-burst,
+  .epic-burst-soft,
+  .app.epic-app-hit,
+  .app.epic-app-mega,
+  .epic-halo-screen,
+  .epic-flash,
+  .epic-banner,
+  .fxCanvas{
+    animation: none !important;
+    transition: none !important;
+  }
 }

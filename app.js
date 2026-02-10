@@ -192,6 +192,7 @@ const topTitle = $("#topTitle");
 const topSub = $("#topSub");
 const btnAddTracker = $("#btnAddTracker");
 const btnLogout = $("#btnLogout");
+const btnEpic = $("#btnEpic");
 
 const viewTrackers = $("#viewTrackers");
 const viewAddTracker = $("#viewAddTracker");
@@ -246,6 +247,13 @@ let initialSnapshotSeen = false;
 let requestedNavApplied = false;
 
 let started = false;
+
+// Epic-mode render lock: prevents Firestore snapshots from re-rendering the DOM
+// while we are running chained FX (wave / escalation). Without this, the grid
+// gets replaced mid-animation and most effects never show.
+let epicLockUntil = 0;
+let epicPendingRender = false;
+let epicPendingTimer = null;
 
 // Add tracker draft state
 let draftScope = "bible"; // bible | ot | nt | custom
@@ -318,19 +326,50 @@ function startAppOnce() {
     openAddTracker();
   });
 
+  btnEpic.addEventListener("click", () => {
+    ui.epic = !ui.epic;
+    saveUiState();
+    updateTopbar();
+  });
+
   btnBack.addEventListener("click", goBack);
 
-  // Chapters click
-  chaptersGrid.addEventListener("click", (e) => {
-    const tile = e.target.closest("[data-ch]");
-    if (!tile) return;
-    const ch = Number(tile.dataset.ch);
-    if (!Number.isFinite(ch)) return;
-    const tracker = getCurrentTracker();
-    if (!tracker || !currentBookId) return;
+// Chapters interactions
+let pressedChapterTile = null;
+const clearPressedChapter = () => {
+  if (pressedChapterTile) {
+    pressedChapterTile.classList.remove("epic-pressing");
+    pressedChapterTile = null;
+  }
+  appEl.classList.remove("epic-app-pressing");
+};
 
-    toggleChapter(tracker, currentBookId, ch);
-  });
+chaptersGrid.addEventListener("pointerdown", (e) => {
+  const tile = e.target.closest("[data-ch]");
+  if (!tile) return;
+  if (!ui.epic) return;
+  pressedChapterTile = tile;
+  tile.classList.add("epic-pressing");
+  appEl.classList.add("epic-app-pressing");
+});
+chaptersGrid.addEventListener("pointerup", clearPressedChapter);
+chaptersGrid.addEventListener("pointercancel", clearPressedChapter);
+chaptersGrid.addEventListener("pointerleave", clearPressedChapter);
+
+chaptersGrid.addEventListener("click", (e) => {
+  const tile = e.target.closest("[data-ch]");
+  if (!tile) return;
+  const ch = Number(tile.dataset.ch);
+  if (!Number.isFinite(ch)) return;
+
+  const tracker = getCurrentTracker();
+  if (!tracker || !currentBookId) return;
+
+  // Release the "press" state (if any) before we animate
+  clearPressedChapter();
+
+  handleChapterToggle(tile, tracker, currentBookId, ch);
+});
 
   btnMarkAll.addEventListener("click", () => {
     const tracker = getCurrentTracker();
@@ -403,6 +442,9 @@ function startAppOnce() {
   // Build static add-tracker UI once
   buildAddTrackerUiOnce();
 
+  // Epic FX canvas (global particle renderer)
+  ensureFxLayer();
+
   subscribeTrackers();
   // Show home immediately; last page is restored after the first Firestore snapshot.
   setView("trackers", { skipSave: true });
@@ -427,6 +469,23 @@ function subscribeTrackers() {
     }
 
     normalizeNavigationAfterData();
+
+    // If epic FX are running, keep the current DOM stable until the chain ends.
+    // (We still keep the in-memory data updated.)
+    const now = Date.now();
+    if (isEpicEnabled() && now < epicLockUntil) {
+      epicPendingRender = true;
+      if (epicPendingTimer) window.clearTimeout(epicPendingTimer);
+      epicPendingTimer = window.setTimeout(() => {
+        epicPendingTimer = null;
+        if (!epicPendingRender) return;
+        epicPendingRender = false;
+        normalizeNavigationAfterData();
+        renderCurrentView();
+      }, Math.max(0, epicLockUntil - now) + 30);
+      return;
+    }
+
     renderCurrentView();
   }, (err) => {
     console.error("Firestore subscribe error:", err);
@@ -509,6 +568,7 @@ function setView(v, opts = {}) {
 
   // Only on home
   btnAddTracker.classList.toggle("hidden", v !== "trackers");
+  btnEpic.classList.toggle("hidden", v !== "trackers");
   btnLogout.classList.toggle("hidden", v !== "trackers");
 
   if (!skipSave) saveUiState();
@@ -606,6 +666,13 @@ function updateTopbar() {
   appEl.style.setProperty("--btnYearSoft", btnSoft);
   appEl.style.setProperty("--btnYearStrong", btnStrong);
   appEl.style.setProperty("--addSoft", addSoft);
+
+  // Epic toggle tint
+  const epicHex = ui.lastTrackerColor || draftColorHex || "#8cc0ff";
+  const ergb = hexToRgb(epicHex);
+  appEl.style.setProperty("--epcSoft", rgba(ergb, SOFT_A));
+  appEl.style.setProperty("--epcStrong", rgba(ergb, STRONG_A));
+  if (btnEpic) btnEpic.setAttribute("aria-pressed", ui.epic ? "true" : "false");
 }
 
 // --- Home (Trackers list) ---
@@ -752,6 +819,433 @@ function renderBook() {
   }
 }
 
+
+// --- Epic Mode (Gamification) ---
+let FX = null;
+
+function ensureFxLayer() {
+  if (FX) return;
+
+  const canvas = document.createElement("canvas");
+  canvas.className = "fxCanvas";
+  canvas.setAttribute("aria-hidden", "true");
+  document.body.appendChild(canvas);
+
+  const ctx = canvas.getContext("2d");
+  const particles = [];
+  let rafId = 0;
+  let lastT = performance.now();
+
+  const resize = () => {
+    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    const w = Math.max(1, window.innerWidth);
+    const h = Math.max(1, window.innerHeight);
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  };
+  window.addEventListener("resize", resize, { passive: true });
+  resize();
+
+  const start = () => {
+    if (rafId) return;
+    lastT = performance.now();
+    rafId = requestAnimationFrame(tick);
+  };
+
+  const tick = (t) => {
+    const dt = Math.min(0.033, Math.max(0.001, (t - lastT) / 1000));
+    lastT = t;
+
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.age += dt;
+      if (p.age >= p.ttl) {
+        particles.splice(i, 1);
+        continue;
+      }
+
+      p.vy += p.g * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.rot += p.vr * dt;
+
+      const life = 1 - (p.age / p.ttl);
+      const a = Math.max(0, Math.min(1, life));
+
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    }
+
+    if (particles.length) {
+      rafId = requestAnimationFrame(tick);
+    } else {
+      rafId = 0;
+    }
+  };
+
+  const burst = (x, y, opts = {}) => {
+    const {
+      count = 32,
+      palette = ["#fff"],
+      power = 1,
+      gravity = 2200,
+      spread = 1,
+      size = 1,
+      ttl = 1.1,
+    } = opts;
+
+    for (let i = 0; i < count; i++) {
+      // Upward explosion with wide spread
+      const ang = (Math.random() * Math.PI) + Math.PI; // pi..2pi (mostly upward)
+      const angJitter = (Math.random() - 0.5) * 0.55 * spread;
+      const a = ang + angJitter;
+
+      const speed = (520 + Math.random() * 980) * power;
+      const vx = Math.cos(a) * speed;
+      const vy = Math.sin(a) * speed;
+
+      const w = (4 + Math.random() * 5) * size;
+      const h = (8 + Math.random() * 16) * size;
+      const vr = (Math.random() * 12 - 6);
+      const color = palette[Math.floor(Math.random() * palette.length)];
+      const pttl = ttl + (Math.random() * 0.5);
+
+      particles.push({
+        x: x + (Math.random() - 0.5) * 4,
+        y: y + (Math.random() - 0.5) * 4,
+        vx,
+        vy,
+        g: gravity,
+        w,
+        h,
+        rot: Math.random() * Math.PI,
+        vr,
+        color,
+        ttl: pttl,
+        age: 0,
+      });
+    }
+    start();
+  };
+
+  const storm = (opts = {}) => {
+    const {
+      count = 260,
+      palette = ["#fff"],
+      gravity = 2600,
+    } = opts;
+
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    for (let i = 0; i < count; i++) {
+      const x = Math.random() * w;
+      const y = -20 - Math.random() * 120;
+      const vx = (Math.random() - 0.5) * 380;
+      const vy = 180 + Math.random() * 420;
+
+      const pw = 4 + Math.random() * 6;
+      const ph = 10 + Math.random() * 18;
+      const vr = (Math.random() * 10 - 5);
+      const color = palette[Math.floor(Math.random() * palette.length)];
+      const pttl = 1.8 + Math.random() * 0.9;
+
+      particles.push({
+        x,
+        y,
+        vx,
+        vy,
+        g: gravity,
+        w: pw,
+        h: ph,
+        rot: Math.random() * Math.PI,
+        vr,
+        color,
+        ttl: pttl,
+        age: 0,
+      });
+    }
+    start();
+  };
+
+  FX = { burst, storm, resize };
+}
+
+function isEpicEnabled() {
+  return !!ui.epic;
+}
+
+function lockEpic(ms) {
+  if (!isEpicEnabled()) return;
+  const until = Date.now() + Math.max(0, Number(ms) || 0);
+  if (until > epicLockUntil) epicLockUntil = until;
+}
+
+function handleChapterToggle(tile, tracker, bookId, ch) {
+  const b = BOOK_BY_ID.get(bookId);
+  if (!b) return;
+  if (ch < 1 || ch > b.chapters) return;
+
+  const set = getReadSet(tracker, bookId);
+  const wasRead = set.has(ch);
+  const willBeRead = !wasRead;
+
+  if (willBeRead) set.add(ch);
+  else set.delete(ch);
+
+  // Update DOM immediately to keep animations alive (epic mode skips full re-render)
+  if (willBeRead) tile.classList.add("read");
+  else tile.classList.remove("read");
+
+  const didCompleteBook = willBeRead && b.chapters > 0 && set.size >= b.chapters;
+  const didCompleteTracker = willBeRead && didCompleteBook && wouldCompleteTracker(tracker, bookId, set);
+
+  if (isEpicEnabled() && willBeRead) {
+    const bookRgb = bookGroupRgb(bookId);
+    const trackerColor = tracker.color;
+
+    // Escalation ladder: chapter -> book -> tracker
+    const chapterLevel = 1;
+    const bookLevel = 2;
+    const trackerLevel = 4;
+    const level = didCompleteTracker ? trackerLevel : (didCompleteBook ? bookLevel : chapterLevel);
+
+    // Keep the DOM stable while the FX chain runs (snapshots shouldn't replace the grid mid-animation)
+    lockEpic(didCompleteTracker ? 5200 : (didCompleteBook ? 2600 : 1100));
+
+    // 1) The clicked tile always gets the full hit
+    epicBurstTile(tile, { level, trackerColor, bookRgb, wave: false });
+    epicAppHit(level);
+
+    if (didCompleteBook) {
+      // 2) Book finish: add an extra punch (so it clearly feels "bigger" than a single chapter)
+      epicBookFinishBoost(tile, { trackerColor, bookRgb, didCompleteTracker });
+
+      // 3) Wave: neighbours -> further out (all tiles get pop/shake/halo/confetti)
+      epicWaveFromTile(tile, { level: didCompleteTracker ? trackerLevel : bookLevel, trackerColor, bookRgb });
+
+      // 4) Tracker finish: TOTAL escalation ON TOP of the wave
+      if (didCompleteTracker) {
+        window.setTimeout(() => {
+          epicTotalEskalation(tile, { trackerColor, bookRgb });
+        }, 240);
+      }
+    }
+  }
+
+  persistBookProgress(tracker, bookId, set, { skipRerender: isEpicEnabled() });
+}
+
+function wouldCompleteTracker(tracker, bookId, newSetForBook) {
+  const ids = normalizeBookIds(tracker.bookIds);
+  for (const id of ids) {
+    const b = BOOK_BY_ID.get(id);
+    if (!b || !b.chapters) continue;
+    const size = (id === bookId) ? newSetForBook.size : getReadSet(tracker, id).size;
+    if (size < b.chapters) return false;
+  }
+  return true;
+}
+
+function epicAppHit(level) {
+  // subtle global punch; stronger on escalation
+  const cls = level >= 4 ? "epic-app-mega" : "epic-app-hit";
+  appEl.classList.remove("epic-app-hit", "epic-app-mega");
+  // restart animation
+  void appEl.offsetWidth;
+  appEl.classList.add(cls);
+  window.setTimeout(() => {
+    appEl.classList.remove("epic-app-hit", "epic-app-mega");
+  }, 650);
+}
+
+function epicBookFinishBoost(originTile, { trackerColor = "#8cc0ff", bookRgb = [200, 200, 200], didCompleteTracker = false } = {}) {
+  // A "bigger than chapter" blast on book completion.
+  // If it also completes the tracker, we keep this punch but let TotalEskalation do the real overkill.
+  ensureFxLayer();
+
+  const rect = originTile.getBoundingClientRect();
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+
+  const trackerRgb = hexToRgb(trackerColor || "#8cc0ff");
+  const palette = [
+    `rgb(${bookRgb[0]}, ${bookRgb[1]}, ${bookRgb[2]})`,
+    `rgb(${trackerRgb[0]}, ${trackerRgb[1]}, ${trackerRgb[2]})`,
+    "rgb(255, 255, 255)",
+    "rgb(255, 240, 120)",
+  ];
+
+  // Two-stage burst feels more "video game" than one fat burst.
+  FX.burst(x, y, { count: didCompleteTracker ? 140 : 110, palette, power: 1.35, gravity: 2550, spread: 1.28, size: 1.08, ttl: 1.25 });
+  window.setTimeout(() => {
+    FX.burst(x, y, { count: didCompleteTracker ? 110 : 85, palette, power: 1.15, gravity: 2650, spread: 1.15, size: 1.02, ttl: 1.15 });
+  }, 120);
+
+  // Extra halo ring
+  epicHaloAt(x, y, bookRgb, didCompleteTracker ? 4 : 2, false);
+}
+
+function epicBurstTile(tile, { level = 1, trackerColor = "#8cc0ff", bookRgb = [200, 200, 200], wave = false } = {}) {
+  ensureFxLayer();
+  // Combined pop+shake animation (single transform animation so it doesn't get overridden)
+  tile.classList.remove("epic-burst", "epic-burst-soft");
+  void tile.offsetWidth;
+  tile.classList.add(wave ? "epic-burst-soft" : "epic-burst");
+
+  const rect = tile.getBoundingClientRect();
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+
+  // Halo ring (screen-space so it survives re-renders)
+  epicHaloAt(x, y, bookRgb, level, wave);
+
+  // Particles (gravity confetti)
+  const trackerRgb = hexToRgb(trackerColor || "#8cc0ff");
+  const palette = [
+    `rgb(${bookRgb[0]}, ${bookRgb[1]}, ${bookRgb[2]})`,
+    `rgb(${trackerRgb[0]}, ${trackerRgb[1]}, ${trackerRgb[2]})`,
+    "rgb(255, 255, 255)",
+    "rgb(255, 240, 120)",
+  ];
+
+  // Escalation: chapter -> book -> tracker
+  const count = wave
+    ? (level >= 4 ? 14 : (level >= 2 ? 10 : 8))
+    : (level >= 4 ? 160 : (level >= 2 ? 85 : 42));
+
+  const power = wave ? 0.62 : (level >= 4 ? 1.65 : (level >= 2 ? 1.3 : 1.08));
+  const spread = wave ? 0.9 : (level >= 4 ? 1.35 : (level >= 2 ? 1.22 : 1.05));
+  const gravity = level >= 4 ? 2800 : (level >= 2 ? 2500 : 2300);
+  const size = wave ? 0.85 : (level >= 4 ? 1.2 : (level >= 2 ? 1.05 : 1.0));
+  const ttl = wave ? 0.95 : (level >= 4 ? 1.35 : (level >= 2 ? 1.2 : 1.05));
+
+  FX.burst(x, y, { count, palette, power, gravity, spread, size, ttl });
+}
+
+function epicHaloAt(x, y, rgb, level, wave) {
+  const halo = document.createElement("div");
+  halo.className = "epic-halo-screen";
+  halo.style.left = `${x}px`;
+  halo.style.top = `${y}px`;
+  halo.style.borderColor = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${wave ? 0.55 : 0.85})`;
+  halo.style.setProperty("--haloScale", String(level >= 4 ? 12 : (level >= 2 ? 9 : 7)));
+  document.body.appendChild(halo);
+  halo.addEventListener("animationend", () => halo.remove(), { once: true });
+}
+
+function epicWaveFromTile(originTile, { level = 2, trackerColor = "#8cc0ff", bookRgb = [200, 200, 200] } = {}) {
+  ensureFxLayer();
+  const tiles = Array.from(chaptersGrid.querySelectorAll(".chapterTile"));
+  if (tiles.length < 2) return;
+
+  const o = originTile.getBoundingClientRect();
+  const ox = o.left + o.width / 2;
+  const oy = o.top + o.height / 2;
+
+  // Sort by distance → creates the "wave"
+  const withDist = tiles.map((t) => {
+    const r = t.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    const d = Math.hypot(x - ox, y - oy);
+    return { t, d };
+  }).sort((a, b) => a.d - b.d);
+
+  // For very large grids keep it snappy (and not too heavy)
+  const perTileDelay = tiles.length > 120 ? 2.0 : (tiles.length > 80 ? 2.2 : 3.0);
+
+  // Compute the wave runtime (max delay + animation duration) and lock until it is done
+  const maxD = withDist.length ? withDist[withDist.length - 1].d : 0;
+  const maxDelay = Math.min(1500, 120 + Math.round(maxD / perTileDelay));
+  lockEpic(maxDelay + 850);
+
+  const originCh = originTile?.dataset?.ch;
+  withDist.forEach(({ t, d }) => {
+    const ch = t.dataset.ch;
+    // Let the initial click stay "special"; wave starts with the neighbors.
+    if (originCh && ch === originCh) return;
+
+    const delay = Math.min(1500, 120 + Math.round(d / perTileDelay));
+    window.setTimeout(() => {
+      const live = chaptersGrid.querySelector(`[data-ch="${CSS.escape(String(ch))}"]`);
+      if (!live) return;
+      epicBurstTile(live, { level, trackerColor, bookRgb, wave: true });
+    }, delay);
+  });
+}
+
+function epicTotalEskalation(originTile, { trackerColor = "#8cc0ff", bookRgb = [200, 200, 200] } = {}) {
+  // Hard lock: tracker finish is a longer chain
+  lockEpic(5200);
+
+  ensureFxLayer();
+
+  // Screen flash (double pulse)
+  const mkFlash = () => {
+    const flash = document.createElement("div");
+    flash.className = "epic-flash";
+    document.body.appendChild(flash);
+    flash.addEventListener("animationend", () => flash.remove(), { once: true });
+  };
+  mkFlash();
+  window.setTimeout(mkFlash, 180);
+
+  // Big screen particle storm (gravity confetti)
+  const o = originTile.getBoundingClientRect();
+  const ox = o.left + o.width / 2;
+  const oy = o.top + o.height / 2;
+
+  const trackerRgb = hexToRgb(trackerColor || "#8cc0ff");
+  const palette = [
+    `rgb(${bookRgb[0]}, ${bookRgb[1]}, ${bookRgb[2]})`,
+    `rgb(${trackerRgb[0]}, ${trackerRgb[1]}, ${trackerRgb[2]})`,
+    "rgb(255, 255, 255)",
+    "rgb(255, 240, 120)",
+    "rgb(255, 150, 220)",
+    "rgb(150, 255, 210)",
+  ];
+
+  // Escalation stack:
+  // 1) huge burst at the clicked tile
+  // 2) follow-up burst
+  // 3) "side cannons" (two extra bursts)
+  // 4) big storm
+  FX.burst(ox, oy, { count: 360, palette, power: 2.05, gravity: 2700, spread: 1.45, size: 1.25, ttl: 1.45 });
+  window.setTimeout(() => {
+    FX.burst(ox, oy, { count: 280, palette, power: 1.75, gravity: 2850, spread: 1.3, size: 1.15, ttl: 1.35 });
+  }, 140);
+
+  window.setTimeout(() => {
+    FX.burst(60, window.innerHeight - 60, { count: 190, palette, power: 1.55, gravity: 3000, spread: 1.35, size: 1.1, ttl: 1.45 });
+    FX.burst(window.innerWidth - 60, window.innerHeight - 60, { count: 190, palette, power: 1.55, gravity: 3000, spread: 1.35, size: 1.1, ttl: 1.45 });
+  }, 220);
+
+  window.setTimeout(() => {
+    FX.storm({ count: 820, palette, gravity: 3200 });
+  }, 320);
+
+  // Extra halos for maximum overkill
+  epicHaloAt(ox, oy, bookRgb, 4, false);
+  window.setTimeout(() => epicHaloAt(ox, oy, bookRgb, 4, false), 160);
+
+  // A short satirical banner
+  const banner = document.createElement("div");
+  banner.className = "epic-banner";
+  banner.textContent = "TRACKER FINISHED";
+  document.body.appendChild(banner);
+  window.setTimeout(() => banner.remove(), 4600);
+}
+
 // --- Firestore writes (progress) ---
 function toggleChapter(tracker, bookId, ch) {
   const b = BOOK_BY_ID.get(bookId);
@@ -778,7 +1272,8 @@ function clearAllChapters(tracker, bookId) {
   persistBookProgress(tracker, bookId, new Set());
 }
 
-function persistBookProgress(tracker, bookId, set) {
+function persistBookProgress(tracker, bookId, set, opts = {}) {
+  const { skipRerender = false } = opts;
   const b = BOOK_BY_ID.get(bookId);
   const max = b ? b.chapters : 9999;
 
@@ -799,9 +1294,11 @@ function persistBookProgress(tracker, bookId, set) {
   trackers = trackers.map(t => (t.id === tracker.id ? next : t));
 
   // Immediately update UI
-  if (currentView === "book") renderBook();
-  if (currentView === "tracker") renderTracker();
-  if (currentView === "trackers") renderTrackers();
+  if (!skipRerender) {
+    if (currentView === "book") renderBook();
+    if (currentView === "tracker") renderTracker();
+    if (currentView === "trackers") renderTrackers();
+  }
   updateTopbar();
 
   // Persist to Firestore
@@ -1070,16 +1567,17 @@ function getCurrentTracker() {
 function loadUiState() {
   try {
     const raw = localStorage.getItem(UI_STATE_KEY);
-    if (!raw) return { view: "trackers", currentTrackerId: null, currentBookId: null, lastTrackerColor: null };
+    if (!raw) return { view: "trackers", currentTrackerId: null, currentBookId: null, lastTrackerColor: null, epic: false };
     const obj = JSON.parse(raw);
     return {
       view: typeof obj.view === "string" ? obj.view : "trackers",
       currentTrackerId: typeof obj.currentTrackerId === "string" ? obj.currentTrackerId : null,
       currentBookId: typeof obj.currentBookId === "string" ? obj.currentBookId : null,
       lastTrackerColor: isValidHexColor(obj.lastTrackerColor) ? obj.lastTrackerColor : null,
+      epic: obj && typeof obj.epic === "boolean" ? obj.epic : false,
     };
   } catch {
-    return { view: "trackers", currentTrackerId: null, currentBookId: null, lastTrackerColor: null };
+    return { view: "trackers", currentTrackerId: null, currentBookId: null, lastTrackerColor: null, epic: false };
   }
 }
 
