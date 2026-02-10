@@ -138,7 +138,7 @@ button{
 
 #btnAddTracker{ --_topbtnbg: var(--addSoft, var(--btnBg)); background: var(--_topbtnbg); }
 
-#btnEpic{ text-transform: uppercase; font-size: 11px; letter-spacing: .6px; }
+#btnEpic{ text-transform: none; font-size: inherit; letter-spacing: 0; }
 #btnEpic.moreEpic{ box-shadow: 0 0 0 2px rgba(255,255,255,.55), 0 10px 26px rgba(0,0,0,.10); animation: epic-epc-pulse 1100ms ease-in-out infinite; }
 @keyframes epic-epc-pulse{ 0%,100%{ transform: translateZ(0) scale(1); } 50%{ transform: translateZ(0) scale(1.04); } }
 
@@ -170,7 +170,8 @@ button{
 #btnEpic[aria-pressed="true"]{ background: var(--epcStrong, var(--epcSoft, rgba(21,19,43,.06))); }
 #btnEpic:active{ background: var(--epcStrong, var(--epcSoft, rgba(21,19,43,.06))); }
 
-.menuPanel .menuItem#btnLogout{ background: rgba(21,19,43,.06); }
+.menuPanel .menuItem#btnLogout{ background: var(--authSoft, rgba(21,19,43,.06)); }
+.menuPanel .menuItem#btnLogout:active{ background: var(--authSoft, rgba(21,19,43,.10)); }
 
 .hidden{ display: none !important; }
 .view{ padding-top: 8px; }
@@ -343,7 +344,7 @@ button{
 .loginInput{
   width: 100%;
   border: 0;
-  background: rgba(236,232,255,.55);
+  background: var(--authSuperSoft, rgba(236,232,255,.55));
   border-radius: 12px;
   padding: 12px 12px;
   font-weight: 650;
@@ -354,12 +355,45 @@ button{
 .loginBtn{
   width: 100%;
   border: 0;
-  background: var(--btnBg);
+  background: var(--authSoft, var(--btnBg));
   border-radius: 12px;
   padding: 12px 12px;
   font-weight: 950;
 }
 .loginBtn:active{ filter: none; }
+
+/* Edit view checkbox (matches add/edit visual language) */
+.checkRow{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--draftSuperSoft, rgba(236,232,255,.35));
+  border-radius: 12px;
+  padding: 12px 12px;
+  font-weight: 850;
+  user-select: none;
+}
+.checkBox{
+  width: 18px;
+  height: 18px;
+}
+.checkLabel{ font-weight: 950; }
+
+/* Year progress bar (tracker view) */
+.yearProgressWrap{
+  padding: 6px 12px 2px;
+}
+.yearProgressBar{
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(21,19,43,.08);
+  overflow: hidden;
+}
+.yearProgressFill{
+  height: 100%;
+  width: var(--yearPct, 0%);
+  background: var(--yearSoft, rgba(132,158,235,.35));
+}
 .loginError{
   min-height: 18px;
   font-size: 12px;

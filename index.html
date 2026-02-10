@@ -37,7 +37,7 @@
       <form class="loginForm" id="loginForm">
         <input class="loginInput" id="loginEmail" type="email" inputmode="email" autocomplete="email" placeholder="E‑Mail" required />
         <input class="loginInput" id="loginPassword" type="password" autocomplete="current-password" placeholder="Passwort" required />
-        <button class="loginBtn" id="btnLogin" type="submit">Login</button>
+        <button class="loginBtn" id="btnLogin" type="submit">Anmelden</button>
         <div class="loginError" id="loginError" aria-live="polite"></div>
       </form>
     </div>
@@ -64,8 +64,8 @@
 
       <!-- Burger menu (Home) -->
       <div class="menuPanel hidden" id="menuPanel" role="menu" aria-label="Menü">
-        <button class="menuItem" id="btnEpic" role="menuitem" aria-label="Epic Mode" aria-pressed="false">epic</button>
-        <button class="menuItem" id="btnLogout" role="menuitem" aria-label="Logout">Logout</button>
+        <button class="menuItem" id="btnEpic" role="menuitem" aria-label="Epic Mode" aria-pressed="false">Epic</button>
+        <button class="menuItem" id="btnLogout" role="menuitem" aria-label="Abmelden">Abmelden</button>
       </div>
     </header>
 
@@ -143,6 +143,11 @@
           <div class="swatches" id="editColorSwatches" aria-label="Farbauswahl"></div>
         </div>
 
+        <label class="checkRow" for="editTrackerYearly">
+          <input class="checkBox" id="editTrackerYearly" type="checkbox" />
+          <span class="checkLabel">Jährlich</span>
+        </label>
+
         <div class="formError" id="editTrackerError" aria-live="polite"></div>
 
         <div class="actionsRow bottomActions">
@@ -155,6 +160,11 @@
 
     <!-- VIEW: TRACKER DETAIL -->
     <main class="view hidden" id="viewTracker" aria-label="Tracker">
+      <div class="yearProgressWrap hidden" id="yearProgressWrap" aria-label="Jahresfortschritt">
+        <div class="yearProgressBar" aria-hidden="true">
+          <div class="yearProgressFill" id="yearProgressFill" aria-hidden="true"></div>
+        </div>
+      </div>
       <div class="booksGrid" id="booksGrid"></div>
     </main>
 

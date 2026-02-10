@@ -196,6 +196,8 @@ const topSub = $("#topSub");
 const btnAddTracker = $("#btnAddTracker");
 const btnEditTracker = $("#btnEditTracker");
 const btnLogout = $("#btnLogout");
+const yearProgressWrap = $("#yearProgressWrap");
+const yearProgressFill = $("#yearProgressFill");
 const btnEpic = $("#btnEpic");
 
 const viewTrackers = $("#viewTrackers");
@@ -231,6 +233,7 @@ const addTrackerError = $("#addTrackerError");
 // Edit tracker UI
 const editTrackerForm = $("#editTrackerForm");
 const editTrackerName = $("#editTrackerName");
+const editTrackerYearly = $("#editTrackerYearly");
 const editColorSwatches = $("#editColorSwatches");
 const btnEditCancel = $("#btnEditCancel");
 const btnEditDelete = $("#btnEditDelete");
@@ -246,6 +249,9 @@ let trackers = []; // [{id, name, color, year, bookIds, progress, createdAt, upd
 let trackersById = new Map();
 
 let ui = loadUiState();
+
+// Apply auth-theme tints immediately (so login screen also reflects last used tracker color)
+applyAuthTint();
 const requestedNav = {
   view: ui.view || "trackers",
   trackerId: ui.currentTrackerId || null,
@@ -312,6 +318,7 @@ function setupAuth() {
       appEl.classList.add("hidden");
       loginView.classList.remove("hidden");
       loginError.textContent = "";
+      applyAuthTint();
       return;
     }
 
@@ -321,6 +328,14 @@ function setupAuth() {
     currentUser = user;
     startAppOnce();
   });
+}
+
+function applyAuthTint() {
+  // Login/Logout should be tinted with the last used tracker color (SOFT_A / SUPERSOFT_A)
+  const hex = ui.lastTrackerColor || "#849eeb";
+  const rgb = hexToRgb(hex);
+  document.documentElement.style.setProperty("--authSoft", rgba(rgb, SOFT_A));
+  document.documentElement.style.setProperty("--authSuperSoft", rgba(rgb, SUPERSOFT_A));
 }
 
 function cleanupSubscriptions() {
@@ -361,7 +376,6 @@ function startAppOnce() {
   });
 
   btnEpic.addEventListener("click", () => {
-    closeMenu();
     const prev = getEpicModeLevel();
     const next = prev === 0 ? 1 : (prev === 1 ? 2 : 0);
     setEpicModeLevel(next, { source: "user" });
@@ -668,6 +682,8 @@ function renderCurrentView() {
 
 // --- Topbar ---
 function updateTopbar() {
+  // Keep login + menu "Abmelden" button tinted with the last used tracker color.
+  applyAuthTint();
   let pct = 0;
   let barStrong = "transparent";
   let barSoft = "transparent";
@@ -753,7 +769,7 @@ function updateTopbar() {
   const lvl = getEpicModeLevel();
   if (btnEpic) {
     btnEpic.setAttribute("aria-pressed", lvl > 0 ? "true" : "false");
-    btnEpic.textContent = (lvl >= 2) ? "more epic" : "epic";
+    btnEpic.textContent = (lvl >= 2) ? "More epic" : "Epic";
     btnEpic.classList.toggle("moreEpic", lvl >= 2);
   }
 }
@@ -827,6 +843,19 @@ function renderTracker() {
   if (!t) {
     setView("trackers");
     return;
+  }
+
+  // Optional yearly progress bar (percentage of current year elapsed)
+  if (yearProgressWrap && yearProgressFill) {
+    const enabled = !!t.yearly;
+    yearProgressWrap.classList.toggle("hidden", !enabled);
+    if (enabled) {
+      const pct = yearElapsedPct();
+      yearProgressFill.style.setProperty("--yearPct", `${pct}%`);
+      // tint with tracker color
+      const rgb = hexToRgb(t.color || ui.lastTrackerColor || "#849eeb");
+      yearProgressFill.style.setProperty("--yearSoft", rgba(rgb, SOFT_A));
+    }
   }
 
   booksGrid.innerHTML = "";
@@ -1875,6 +1904,7 @@ function openEditTracker() {
 
   editTrackerError.textContent = "";
   editTrackerName.value = String(t.name || "");
+  if (editTrackerYearly) editTrackerYearly.checked = !!t.yearly;
 
   const palette = Array.from(editColorSwatches.querySelectorAll("[data-color]")).map(el => el.dataset.color);
   editColorHex = (isValidHexColor(t.color) ? t.color : null) || ui.lastTrackerColor || palette[15] || palette[0] || "#8cc0ff";
@@ -1933,6 +1963,7 @@ async function confirmEditTracker() {
     await updateDoc(ref, {
       name,
       color: editColorHex,
+      yearly: !!(editTrackerYearly && editTrackerYearly.checked),
       updatedAt: serverTimestamp(),
     });
 
@@ -2082,6 +2113,16 @@ function trackerYear(tracker) {
   const y = Number(tracker && tracker.year);
   if (Number.isFinite(y) && y >= 1900 && y <= 3000) return String(y);
   return String(new Date().getFullYear());
+}
+
+function yearElapsedPct(now = new Date()) {
+  const year = now.getFullYear();
+  const start = new Date(year, 0, 1, 0, 0, 0, 0);
+  const end = new Date(year + 1, 0, 1, 0, 0, 0, 0);
+  const totalMs = end.getTime() - start.getTime();
+  const elapsedMs = Math.min(Math.max(now.getTime() - start.getTime(), 0), totalMs);
+  const pct = totalMs ? (elapsedMs / totalMs) * 100 : 0;
+  return Math.min(100, Math.max(0, Math.round(pct)));
 }
 
 function normalizeBookIds(ids) {
