@@ -122,11 +122,12 @@ const GROUP_RGB = {
   "Kleine Propheten": [255, 145, 195],
 
   // NT
-  "Evangelien": [140, 192, 255],
-  "NT Geschichte": [122, 230, 185],
-  "Paulusbriefe": [188, 150, 255],
-  "Allgemeine Briefe": [255, 195, 120],
-  "Prophetie": [255, 145, 195],
+  // NOTE: all group colors are unique (no duplicates across AT/NT)
+  "Evangelien": [120, 220, 255],
+  "NT Geschichte": [255, 225, 140],
+  "Paulusbriefe": [150, 160, 255],
+  "Allgemeine Briefe": [180, 255, 150],
+  "Prophetie": [255, 160, 140],
 };
 
 const BOOK_GROUP_BY_ID = (() => {
@@ -169,7 +170,8 @@ function bookGroupRgb(bookId) {
 
 const STRONG_A = 1;
 const SOFT_A = 0.35;
-const SUPERSOFT_A = 0.35;
+// Even softer background alpha for inputs/cards in the add-tracker view
+const SUPERSOFT_A = 0.10;
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -213,6 +215,8 @@ const booksSummary = $("#booksSummary");
 const bookPicker = $("#bookPicker");
 const pickGridOT = $("#pickGridOT");
 const pickGridNT = $("#pickGridNT");
+const btnSelectNT = $("#btnSelectNT");
+const btnSelectOT = $("#btnSelectOT");
 const btnSelectAll = $("#btnSelectAll");
 const btnSelectNone = $("#btnSelectNone");
 const btnAddCancel = $("#btnAddCancel");
@@ -372,6 +376,18 @@ function startAppOnce() {
   btnSelectAll.addEventListener("click", () => {
     if (draftScope !== "custom") return;
     draftBookIds = new Set([...OT_BOOK_IDS, ...NT_BOOK_IDS]);
+    updateAddTrackerUI();
+  });
+
+  btnSelectNT.addEventListener("click", () => {
+    if (draftScope !== "custom") return;
+    draftBookIds = new Set(NT_BOOK_IDS);
+    updateAddTrackerUI();
+  });
+
+  btnSelectOT.addEventListener("click", () => {
+    if (draftScope !== "custom") return;
+    draftBookIds = new Set(OT_BOOK_IDS);
     updateAddTrackerUI();
   });
 
@@ -537,6 +553,11 @@ function updateTopbar() {
   } else if (currentView === "add") {
     topTitle.textContent = "Tracker hinzufügen";
     topSub.textContent = "";
+
+    // Important: keep pills (Abbrechen/Hinzufügen) tinted in the add view
+    // (updateTopbar runs after the add view render and would otherwise overwrite).
+    const rgb = hexToRgb(draftColorHex || ui.lastTrackerColor || "#cccccc");
+    btnSoft = rgba(rgb, SOFT_A);
   } else if (currentView === "tracker" && tracker) {
     const st = trackerStats(tracker);
     topTitle.textContent = String(tracker.name || "Tracker");
@@ -902,10 +923,11 @@ function updateAddTrackerUI() {
   });
 
   // Summary
-  const total = draftBookIds.size;
-  const of = draftScope === "bible" ? 66 : (draftScope === "ot" ? 39 : (draftScope === "nt" ? 27 : 66));
-  const label = draftScope === "bible" ? "Ganze Bibel" : (draftScope === "ot" ? "AT" : (draftScope === "nt" ? "NT" : "Bücher"));
-  booksSummary.textContent = `${label}: ${total}/${of} Bücher ausgewählt`;
+  // Hinweise/Counts sind bewusst entfernt (Start bei 0, weniger UI-Lärm)
+  if (booksSummary) {
+    booksSummary.textContent = "";
+    booksSummary.classList.add("hidden");
+  }
 
   // Color swatches
   colorSwatches.querySelectorAll("[data-color]").forEach((btn) => {
@@ -916,8 +938,10 @@ function updateAddTrackerUI() {
   const rgb = hexToRgb(draftColorHex || "#cccccc");
   const soft = rgba(rgb, SOFT_A);
   const strong = rgba(rgb, STRONG_A);
+  const superSoft = rgba(rgb, SUPERSOFT_A);
   appEl.style.setProperty("--draftSoft", soft);
   appEl.style.setProperty("--draftStrong", strong);
+  appEl.style.setProperty("--draftSuperSoft", superSoft);
   // Existing variables used across the app (pills)
   appEl.style.setProperty("--btnYearSoft", soft);
 }

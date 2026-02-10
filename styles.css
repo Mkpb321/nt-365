@@ -12,8 +12,8 @@
   --r: 12px;
   --fs: 16px;
 
-  --gapYears: 10px;
-  --gapTiles: 6px;
+  --gapYears: 8px;
+  --gapTiles: 8px;
 }
 
 *{ box-sizing: border-box; }
@@ -53,7 +53,6 @@ button{
   display: grid;
   grid-template-columns: 40px 1fr auto;
   align-items: center;
-  
   padding: 6px 0; /* minimal */
   border-radius: 14px;
   overflow: visible;
@@ -64,6 +63,7 @@ button{
   background: var(--barSoft, rgba(200,200,200,.35));
   border-radius: 14px;
   z-index: 0;
+  min-height: 42px;
 }
 .topbarFill{
   position: absolute;
@@ -77,7 +77,7 @@ button{
 .topcenter{
   text-align: center;
   min-width: 0;
-  padding: 0 6px;
+  padding: 0 0px;
   position: relative;
   z-index: 1;
 }
@@ -95,6 +95,7 @@ button{
   font-size: 14px;
   line-height: 1.05;
   white-space: nowrap; /* always show full title */
+  
 }
 .topSub{
   margin-top: 2px;
@@ -126,7 +127,7 @@ button{
 #btnAddTracker{ background: var(--addSoft, var(--btnBg)); }
 
 .hidden{ display: none !important; }
-.view{ padding-top: 8px; }
+.view{ padding-top: 8px; }/*todo
 
 /* Shared "tile-as-progress" */
 .tile{
@@ -351,8 +352,11 @@ button{
 
 /* Add view: input tinted with selected tracker color (SOFT_A) */
 #viewAddTracker .textInput{
-  background: var(--draftSoft, rgba(236,232,255,.55));
+  background: var(--draftSuperSoft, rgba(236,232,255,.55));
 }
+
+/* Add view: hide scope-selection hints (requested) */
+#booksSummary{ display: none; }
 
 .mutedLine{
   font-size: 12px;
@@ -405,7 +409,7 @@ button{
 .bookPicker{
   padding: 10px 10px;
   border-radius: 14px;
-  background: rgba(236,232,255,.35);
+  background: var(--draftSuperSoft, rgba(236,232,255,.35));
 }
 
 .bookPickerHeader{
