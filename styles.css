@@ -53,7 +53,7 @@ button{
   display: grid;
   grid-template-columns: 40px 1fr auto;
   align-items: center;
-  gap: 8px;
+  
   padding: 6px 0; /* minimal */
   border-radius: 14px;
   overflow: visible;
@@ -349,6 +349,11 @@ button{
   outline: none;
 }
 
+/* Add view: input tinted with selected tracker color (SOFT_A) */
+#viewAddTracker .textInput{
+  background: var(--draftSoft, rgba(236,232,255,.55));
+}
+
 .mutedLine{
   font-size: 12px;
   color: rgba(21,19,43,.70);
@@ -361,7 +366,7 @@ button{
 }
 
 .chipBtn{
-  background: var(--btnBg);
+  background: var(--draftSoft, var(--btnBg));
   border-radius: 10px;
   padding: 8px 10px;
   font-weight: 950;
@@ -369,7 +374,7 @@ button{
 }
 
 .chipBtn[aria-checked="true"]{
-  background: var(--btnYearSoft, var(--btnBg));
+  background: var(--draftStrong, var(--btnYearSoft, var(--btnBg)));
 }
 
 .chipBtn:active{ background: var(--tap); }
@@ -448,7 +453,7 @@ button{
 }
 
 .pickBtn{
-  background: rgba(21,19,43,.08);
+  background: var(--bookSoft, rgba(21,19,43,.08));
   border-radius: 10px;
   padding: 8px 8px;
   font-weight: 950;
@@ -459,7 +464,7 @@ button{
 }
 
 .pickBtn.selected{
-  background: var(--btnYearSoft, var(--btnBg));
+  background: var(--bookStrong, var(--draftStrong, var(--btnYearSoft, var(--btnBg))));
 }
 
 .pickBtn:active{ background: var(--tap); }

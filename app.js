@@ -112,8 +112,64 @@ const BOOK_BY_ID = new Map(BOOKS.map(b => [b.id, b]));
 const OT_BOOK_IDS = BOOKS.filter(b => b.testament === "ot").map(b => b.id);
 const NT_BOOK_IDS = BOOKS.filter(b => b.testament === "nt").map(b => b.id);
 
+// --- Book groups + colors (used for book tiles + book picker) ---
+const GROUP_RGB = {
+  // AT
+  "Gesetz": [140, 192, 255],
+  "AT Geschichte": [122, 230, 185],
+  "Weisheit": [255, 195, 120],
+  "Große Propheten": [188, 150, 255],
+  "Kleine Propheten": [255, 145, 195],
+
+  // NT
+  "Evangelien": [140, 192, 255],
+  "NT Geschichte": [122, 230, 185],
+  "Paulusbriefe": [188, 150, 255],
+  "Allgemeine Briefe": [255, 195, 120],
+  "Prophetie": [255, 145, 195],
+};
+
+const BOOK_GROUP_BY_ID = (() => {
+  const m = new Map();
+
+  const put = (group, ids) => ids.forEach(id => m.set(id, group));
+
+  // AT
+  put("Gesetz", ["gen", "exo", "lev", "num", "deu"]);
+  put("AT Geschichte", [
+    "jos", "jdg", "rut",
+    "1sa", "2sa", "1ki", "2ki",
+    "1ch", "2ch", "ezr", "neh", "est"
+  ]);
+  put("Weisheit", ["job", "psa", "pro", "ecc", "sng"]);
+  put("Große Propheten", ["isa", "jer", "lam", "ezk", "dan"]);
+  put("Kleine Propheten", ["hos", "jol", "amo", "oba", "jon", "mic", "nam", "hab", "zep", "hag", "zec", "mal"]);
+
+  // NT
+  put("Evangelien", ["mat", "mar", "luk", "joh"]);
+  put("NT Geschichte", ["act"]);
+  put("Paulusbriefe", [
+    "rom", "1co", "2co", "gal", "eph", "phi", "col",
+    "1th", "2th", "1ti", "2ti", "tit", "phm"
+  ]);
+  put("Allgemeine Briefe", ["heb", "jam", "1pe", "2pe", "1jo", "2jo", "3jo", "jud"]);
+  put("Prophetie", ["rev"]);
+
+  return m;
+})();
+
+function bookGroup(bookId) {
+  return BOOK_GROUP_BY_ID.get(bookId) || (BOOK_BY_ID.get(bookId)?.testament === "ot" ? "AT Geschichte" : "Evangelien");
+}
+
+function bookGroupRgb(bookId) {
+  const g = bookGroup(bookId);
+  return GROUP_RGB[g] || [200, 200, 200];
+}
+
 const STRONG_A = 1;
 const SOFT_A = 0.35;
+const SUPERSOFT_A = 0.35;
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -188,8 +244,8 @@ let requestedNavApplied = false;
 let started = false;
 
 // Add tracker draft state
-let draftScope = "nt"; // bible | ot | nt | custom
-let draftBookIds = new Set(NT_BOOK_IDS);
+let draftScope = "bible"; // bible | ot | nt | custom
+let draftBookIds = new Set([...OT_BOOK_IDS, ...NT_BOOK_IDS]);
 let draftColorHex = null;
 
 setupAuth();
@@ -586,13 +642,15 @@ function renderTracker() {
   booksGrid.innerHTML = "";
 
   const ids = normalizeBookIds(t.bookIds);
-  const rgb = hexToRgb(t.color || "#cccccc");
-  const fillStrong = rgba(rgb, STRONG_A);
-  const fillSoft = rgba(rgb, SOFT_A);
 
   ids.forEach((bookId) => {
     const b = BOOK_BY_ID.get(bookId);
     if (!b) return;
+
+    // Book tiles: color by book group (not by tracker)
+    const rgb = bookGroupRgb(bookId);
+    const fillStrong = rgba(rgb, STRONG_A);
+    const fillSoft = rgba(rgb, SOFT_A);
 
     const bp = bookProgress(t, bookId);
     const pct = Math.round(bp * 100);
@@ -751,8 +809,9 @@ function buildAddTrackerUiOnce() {
   buildBookPickGrid(pickGridNT, BOOKS.filter(b => b.testament === "nt"));
 
   // Defaults
-  draftColorHex = palette[6] || "#8cc0ff";
-  setDraftScope("nt");
+  // Default: 16th color (dark blue / slightly violet) + whole bible
+  draftColorHex = palette[15] || palette[0] || "#8cc0ff";
+  setDraftScope("bible");
   setDraftColor(draftColorHex);
 
   trackerNameInput.value = "";
@@ -767,16 +826,23 @@ function buildBookPickGrid(container, books) {
     btn.className = "pickBtn";
     btn.dataset.book = b.id;
     btn.textContent = b.short || b.name;
+
+    // Per-book group color (unselected = SOFT_A, selected = STRONG_A)
+    const rgb = bookGroupRgb(b.id);
+    btn.style.setProperty("--bookSoft", rgba(rgb, SOFT_A));
+    btn.style.setProperty("--bookStrong", rgba(rgb, STRONG_A));
+
     container.appendChild(btn);
   });
 }
 
 function openAddTracker() {
   // Reset draft
-  draftScope = "nt";
-  draftBookIds = new Set(NT_BOOK_IDS);
+  draftScope = "bible";
+  draftBookIds = new Set([...OT_BOOK_IDS, ...NT_BOOK_IDS]);
   const palette = Array.from(colorSwatches.querySelectorAll("[data-color]")).map(el => el.dataset.color);
-  draftColorHex = palette[6] || "#8cc0ff";
+  // Default: 16th color (index 15)
+  draftColorHex = palette[15] || palette[0] || "#8cc0ff";
 
   trackerNameInput.value = "";
   addTrackerError.textContent = "";
@@ -792,12 +858,16 @@ function renderAddTrackerView() {
 function setDraftScope(scope) {
   const s = String(scope || "").toLowerCase();
   if (!["bible", "ot", "nt", "custom"].includes(s)) return;
+  const prev = draftScope;
   draftScope = s;
 
   if (draftScope === "bible") draftBookIds = new Set([...OT_BOOK_IDS, ...NT_BOOK_IDS]);
   else if (draftScope === "ot") draftBookIds = new Set(OT_BOOK_IDS);
   else if (draftScope === "nt") draftBookIds = new Set(NT_BOOK_IDS);
-  // custom keeps current selection
+  else if (draftScope === "custom" && prev !== "custom") {
+    // Requirement: switching to "Bücher wählen" starts with nothing selected
+    draftBookIds = new Set();
+  }
 
   updateAddTrackerUI();
 }
@@ -844,7 +914,12 @@ function updateAddTrackerUI() {
 
   // Make pills & tiles reflect draft color (nice preview)
   const rgb = hexToRgb(draftColorHex || "#cccccc");
-  appEl.style.setProperty("--btnYearSoft", rgba(rgb, SOFT_A));
+  const soft = rgba(rgb, SOFT_A);
+  const strong = rgba(rgb, STRONG_A);
+  appEl.style.setProperty("--draftSoft", soft);
+  appEl.style.setProperty("--draftStrong", strong);
+  // Existing variables used across the app (pills)
+  appEl.style.setProperty("--btnYearSoft", soft);
 }
 
 async function confirmAddTracker() {
