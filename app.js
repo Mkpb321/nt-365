@@ -616,7 +616,7 @@ function renderTrackers() {
 
   trackers.forEach((t) => {
     const st = trackerStats(t);
-    const rgb = bookGroupRgb(currentBookId);
+    const rgb = hexToRgb(t.color);
     const fillStrong = rgba(rgb, STRONG_A);
     const fillSoft = rgba(rgb, SOFT_A);
 

@@ -12,8 +12,8 @@
   --r: 12px;
   --fs: 16px;
 
-  --gapYears: 10px;
-  --gapTiles: 6px;
+  --gapYears: 8px;
+  --gapTiles: 8px;
 }
 
 *{ box-sizing: border-box; }
