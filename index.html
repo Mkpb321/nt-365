@@ -2,21 +2,17 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <!-- Disable zoom as far as browsers allow (iOS Safari respects this for user scaling) -->
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>NT 365</title>
 
-  <!-- PWA / Install (iOS + Android) -->
   <meta name="theme-color" content="#ffffff" />
   <meta name="application-name" content="NT 365" />
   <meta name="mobile-web-app-capable" content="yes" />
 
-  <!-- iOS: Add to Home Screen -->
   <meta name="apple-mobile-web-app-title" content="NT 365" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
-  <!-- Icons (all in ./icon) -->
   <link rel="apple-touch-icon" href="./icon/apple-touch-icon.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="./icon/apple-touch-icon.png" />
   <link rel="icon" href="./icon/favicon.ico" />
@@ -25,13 +21,12 @@
   <link rel="icon" type="image/png" sizes="16x16" href="./icon/favicon-16x16.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="./icon/android-chrome-192x192.png" />
   <link rel="icon" type="image/png" sizes="512x512" href="./icon/android-chrome-512x512.png" />
-
   <link rel="manifest" href="./icon/site.webmanifest" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- LOGIN ONLY (shown when signed out) -->
-  <main class="loginView hidden" id="loginView" aria-label="Login">
+  <!-- LOGIN (shown when signed out) -->
+  <main class="loginView hidden" id="loginView" aria-label="Anmelden">
     <div class="loginBox">
       <div class="loginBrand">NT 365</div>
       <form class="loginForm" id="loginForm">
@@ -58,16 +53,28 @@
 
       <div class="topActions" id="topActions">
         <button class="topbtn" id="btnAddTracker" aria-label="Tracker hinzufügen" title="Tracker hinzufügen">＋</button>
-        <button class="topbtn hidden" id="btnEditTracker" aria-label="Tracker bearbeiten" title="Tracker bearbeiten">✎</button>
-        <button class="topbtn hidden" id="btnMenu" aria-label="Menü" title="Menü">☰</button>
-      </div>
-
-      <!-- Burger menu (Home) -->
-      <div class="menuPanel hidden" id="menuPanel" role="menu" aria-label="Menü">
-        <button class="menuItem" id="btnEpic" role="menuitem" aria-label="Epic Mode" aria-pressed="false">Epic</button>
-        <button class="menuItem" id="btnLogout" role="menuitem" aria-label="Abmelden">Abmelden</button>
+        <button class="topbtn" id="btnEditTracker" aria-label="Tracker bearbeiten" title="Tracker bearbeiten">✎</button>
+        <button class="topbtn" id="btnMenu" aria-label="Menü" title="Menü">☰</button>
       </div>
     </header>
+
+    <!-- BURGER MENU -->
+    <div class="menuOverlay hidden" id="menuOverlay" aria-hidden="true">
+      <div class="menuPanel" role="dialog" aria-label="Menü" aria-modal="true">
+        <div class="menuList">
+          <label class="menuRow" for="menuEpic">
+            <span class="menuText">Epic</span>
+            <span class="switch">
+              <input id="menuEpic" type="checkbox" />
+              <span class="switchTrack" aria-hidden="true"></span>
+              <span class="switchThumb" aria-hidden="true"></span>
+            </span>
+          </label>
+
+          <button class="menuBtn" id="btnMenuLogout" type="button">Abmelden</button>
+        </div>
+      </div>
+    </div>
 
     <!-- VIEW: TRACKERS (Home) -->
     <main class="view" id="viewTrackers" aria-label="Trackerübersicht">
@@ -124,8 +131,8 @@
         <div class="formError" id="addTrackerError" aria-live="polite"></div>
 
         <div class="actionsRow bottomActions">
-          <button type="button" class="pill" id="btnAddCancel">Abbrechen</button>
-          <button type="submit" class="pill" id="btnAddConfirm">Hinzufügen</button>
+          <button class="pill" id="btnAddCancel" type="button">Abbrechen</button>
+          <button class="pill primary" id="btnAddSubmit" type="submit">Hinzufügen</button>
         </div>
       </form>
     </main>
@@ -135,7 +142,7 @@
       <form class="addForm" id="editTrackerForm">
         <div class="field">
           <div class="fieldLabel">Name</div>
-          <input class="textInput" id="editTrackerName" type="text" maxlength="60" placeholder="Tracker-Name" required />
+          <input class="textInput" id="editTrackerName" type="text" maxlength="60" required />
         </div>
 
         <div class="field">
@@ -143,38 +150,37 @@
           <div class="swatches" id="editColorSwatches" aria-label="Farbauswahl"></div>
         </div>
 
-        <label class="checkRow" for="editTrackerYearly">
-          <input class="checkBox" id="editTrackerYearly" type="checkbox" />
-          <span class="checkLabel">Jährlich</span>
-        </label>
+        <div class="field">
+          <label class="checkRow">
+            <input id="editYearly" type="checkbox" />
+            <span>Jährlich</span>
+          </label>
+        </div>
 
         <div class="formError" id="editTrackerError" aria-live="polite"></div>
 
         <div class="actionsRow bottomActions">
-          <button type="button" class="pill" id="btnEditCancel">Abbrechen</button>
-          <button type="button" class="pill danger" id="btnEditDelete">Tracker löschen</button>
-          <button type="submit" class="pill" id="btnEditSave">Speichern</button>
+          <button class="pill" id="btnEditCancel" type="button">Abbrechen</button>
+          <button class="pill danger" id="btnEditDelete" type="button">Tracker löschen</button>
+          <button class="pill primary" id="btnEditSave" type="submit">Speichern</button>
         </div>
       </form>
     </main>
 
-    <!-- VIEW: TRACKER DETAIL -->
+    <!-- VIEW: TRACKER -->
     <main class="view hidden" id="viewTracker" aria-label="Tracker">
-      <div class="yearProgressWrap hidden" id="yearProgressWrap" aria-label="Jahresfortschritt">
-        <div class="yearProgressBar" aria-hidden="true">
-          <div class="yearProgressFill" id="yearProgressFill" aria-hidden="true"></div>
-        </div>
+      <div class="yearProgress hidden" id="yearProgress" aria-label="Jahresfortschritt">
+        <div class="yearProgressFill" id="yearProgressFill" aria-hidden="true"></div>
       </div>
       <div class="booksGrid" id="booksGrid"></div>
     </main>
 
-    <!-- VIEW: BOOK CHAPTERS -->
+    <!-- VIEW: BOOK -->
     <main class="view hidden" id="viewBook" aria-label="Kapitel">
       <div class="chapters" id="chaptersGrid" aria-label="Kapitel"></div>
-
       <div class="actionsRow bottomActions">
-        <button class="pill" id="btnMarkAll">Alle</button>
-        <button class="pill" id="btnMarkNone">Keine</button>
+        <button class="pill" id="btnMarkAll" type="button">Alle</button>
+        <button class="pill" id="btnMarkNone" type="button">Keine</button>
       </div>
     </main>
   </div>

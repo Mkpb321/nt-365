@@ -89,7 +89,7 @@ button{
   gap: 8px;
   position: relative;
   z-index: 1;
-  margin-right: 8px; /* match left button inset */
+  margin-right: 8px;
 }
 .topTitle{
   font-weight: 980;
@@ -123,55 +123,15 @@ button{
 }
 .topbtn:active{ background: var(--_topbtnbg, var(--btnBg)); }
 
-#btnBack{
-  --_topbtnbg: #ffffff;
-  background: var(--_topbtnbg);
-  margin-left: 8px;
-  grid-column: 1;
-  justify-self: start;
-}
-
-/* Burger button lives on the right and should match the ＋ style */
-#btnMenu{ --_topbtnbg: var(--addSoft, var(--btnBg)); background: var(--_topbtnbg); }
-
-#btnEditTracker{ --_topbtnbg: #ffffff; background: var(--_topbtnbg); }
+#btnBack{ --_topbtnbg: #ffffff; background: var(--_topbtnbg); margin-left: 8px; }
 
 #btnAddTracker{ --_topbtnbg: var(--addSoft, var(--btnBg)); background: var(--_topbtnbg); }
 
-#btnEpic{ text-transform: none; font-size: inherit; letter-spacing: 0; }
+#btnEpic{ --_topbtnbg: var(--epcSoft, var(--btnBg)); background: var(--_topbtnbg); text-transform: uppercase; font-size: 11px; letter-spacing: .6px; width: auto; min-width: 44px; padding: 0 10px; }
+#btnEpic[aria-pressed="true"]{ --_topbtnbg: var(--epcStrong, var(--epcSoft, var(--btnBg))); }
+#btnEpic:active{ background: var(--epcStrong, var(--epcSoft, var(--btnBg))); }
 #btnEpic.moreEpic{ box-shadow: 0 0 0 2px rgba(255,255,255,.55), 0 10px 26px rgba(0,0,0,.10); animation: epic-epc-pulse 1100ms ease-in-out infinite; }
 @keyframes epic-epc-pulse{ 0%,100%{ transform: translateZ(0) scale(1); } 50%{ transform: translateZ(0) scale(1.04); } }
-
-/* Burger menu */
-.menuPanel{
-  position: absolute;
-  right: 8px;
-  left: auto;
-  top: calc(100% + 8px);
-  min-width: 180px;
-  padding: 8px;
-  border-radius: 14px;
-  background: rgba(255,255,255,.98);
-  box-shadow: 0 14px 36px rgba(0,0,0,.12);
-  z-index: 10;
-}
-.menuItem{
-  width: 100%;
-  text-align: left;
-  border-radius: 12px;
-  padding: 10px 12px;
-  font-weight: 950;
-  background: rgba(21,19,43,.06);
-}
-.menuItem + .menuItem{ margin-top: 8px; }
-.menuItem:active{ background: rgba(21,19,43,.10); }
-
-#btnEpic{ background: var(--epcSoft, rgba(21,19,43,.06)); }
-#btnEpic[aria-pressed="true"]{ background: var(--epcStrong, var(--epcSoft, rgba(21,19,43,.06))); }
-#btnEpic:active{ background: var(--epcStrong, var(--epcSoft, rgba(21,19,43,.06))); }
-
-.menuPanel .menuItem#btnLogout{ background: var(--authSoft, rgba(21,19,43,.06)); }
-.menuPanel .menuItem#btnLogout:active{ background: var(--authSoft, rgba(21,19,43,.10)); }
 
 .hidden{ display: none !important; }
 .view{ padding-top: 8px; }
@@ -281,11 +241,6 @@ button{
 }
 .pill:active{ background: var(--btnYearStrong, var(--btnYearSoft, var(--btnBg))); }
 
-.pill.danger{
-  background: rgba(235,132,132,.35);
-}
-.pill.danger:active{ background: rgba(235,132,132,1); }
-
 /* Chapters */
 .chapters{
   display: grid;
@@ -317,8 +272,9 @@ button{
   background: var(--chStrong, rgba(200,200,200,1));
 }
 
-/* legacy: logout used to be a topbar button; now it lives in the burger menu */
-.topbtn#btnLogout{ --_topbtnbg: var(--addSoft, var(--btnBg)); background: var(--_topbtnbg); }
+/* Topbar buttons */
+#btnEditTracker{ --_topbtnbg: #ffffff; background: var(--_topbtnbg); }
+#btnMenu{ --_topbtnbg: var(--addSoft, var(--btnBg)); background: var(--_topbtnbg); }
 
 /* Login */
 .loginView{
@@ -362,37 +318,72 @@ button{
 }
 .loginBtn:active{ filter: none; }
 
-/* Edit view checkbox (matches add/edit visual language) */
-.checkRow{
+/* Burger menu */
+.menuOverlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.18);
+  z-index: 999;
+}
+.menuPanel{
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: min(280px, calc(100vw - 24px));
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 10px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.14);
+}
+.menuList{ display: grid; gap: 8px; }
+.menuRow{
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: var(--draftSuperSoft, rgba(236,232,255,.35));
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 10px;
   border-radius: 12px;
+  background: rgba(21,19,43,.05);
+}
+.menuText{ font-weight: 900; }
+.menuBtn{
+  width: 100%;
+  text-align: left;
   padding: 12px 12px;
-  font-weight: 850;
-  user-select: none;
+  border-radius: 12px;
+  background: var(--authSoft, rgba(236,232,255,.55));
+  font-weight: 950;
 }
-.checkBox{
-  width: 18px;
-  height: 18px;
-}
-.checkLabel{ font-weight: 950; }
+.menuBtn:active{ filter: none; }
+
+/* Switch */
+.switch{ position: relative; width: 46px; height: 26px; display: inline-block; }
+.switch input{ position: absolute; inset: 0; opacity: 0; }
+.switchTrack{ position: absolute; inset: 0; border-radius: 999px; background: rgba(21,19,43,.18); }
+.switchThumb{ position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 999px; background: #ffffff; box-shadow: 0 2px 10px rgba(0,0,0,.18); transition: transform 160ms ease, background 160ms ease; }
+.switch input:checked ~ .switchTrack{ background: var(--epcSoft, rgba(236,232,255,.55)); }
+.switch input:checked ~ .switchThumb{ transform: translateX(20px); }
+
+/* Edit view checkbox */
+.checkRow{ display: flex; align-items: center; gap: 10px; padding: 8px 4px; font-weight: 800; }
+.checkRow input{ width: 18px; height: 18px; }
+
+/* Danger button for delete */
+.pill.danger{ background: rgba(235,132,132,.28); }
+.pill.danger:active{ background: rgba(235,132,132,.40); }
 
 /* Year progress bar (tracker view) */
-.yearProgressWrap{
-  padding: 6px 12px 2px;
-}
-.yearProgressBar{
-  height: 8px;
+.yearProgress{
+  height: 10px;
   border-radius: 999px;
   background: rgba(21,19,43,.08);
   overflow: hidden;
+  margin: 0px 0px 8px;
 }
 .yearProgressFill{
   height: 100%;
-  width: var(--yearPct, 0%);
-  background: var(--yearSoft, rgba(132,158,235,.35));
+  width: 0%;
+  background: var(--yearStrong, rgba(200,200,200,1));
 }
 .loginError{
   min-height: 18px;
@@ -869,6 +860,11 @@ button{
   46%{ transform: translate(-50%, -50%) scale(1.04) rotate(1deg); }
   90%{ opacity: 1; transform: translate(-50%, -50%) scale(1.02) rotate(0deg); }
   100%{ opacity: 0; transform: translate(-50%, -50%) scale(1.02) rotate(0deg); filter: blur(2px); }
+
+
+  18%{ opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+  90%{ opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100%{ opacity: 0; transform: translate(-50%, -50%) scale(1); }
 }
 
 .epic-screen-confetti{

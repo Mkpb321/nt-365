@@ -189,16 +189,16 @@ const appEl = $("#app");
 // App UI
 const topbar = $("#topbar");
 const btnBack = $("#btnBack");
-const btnMenu = $("#btnMenu");
-const menuPanel = $("#menuPanel");
 const topTitle = $("#topTitle");
 const topSub = $("#topSub");
 const btnAddTracker = $("#btnAddTracker");
 const btnEditTracker = $("#btnEditTracker");
-const btnLogout = $("#btnLogout");
-const yearProgressWrap = $("#yearProgressWrap");
-const yearProgressFill = $("#yearProgressFill");
-const btnEpic = $("#btnEpic");
+const btnMenu = $("#btnMenu");
+
+// Burger menu
+const menuOverlay = $("#menuOverlay");
+const menuEpic = $("#menuEpic");
+const btnMenuLogout = $("#btnMenuLogout");
 
 const viewTrackers = $("#viewTrackers");
 const viewAddTracker = $("#viewAddTracker");
@@ -206,6 +206,19 @@ const viewEditTracker = $("#viewEditTracker");
 const viewTracker = $("#viewTracker");
 const viewBook = $("#viewBook");
 
+// Year progress
+const yearProgress = $("#yearProgress");
+const yearProgressFill = $("#yearProgressFill");
+
+// Edit tracker view
+const editTrackerForm = $("#editTrackerForm");
+const editTrackerName = $("#editTrackerName");
+const editColorSwatches = $("#editColorSwatches");
+const editYearly = $("#editYearly");
+const editTrackerError = $("#editTrackerError");
+const btnEditCancel = $("#btnEditCancel");
+const btnEditDelete = $("#btnEditDelete");
+const btnEditSave = $("#btnEditSave");
 const elTrackersList = $("#trackersList");
 const emptyTrackersHint = $("#emptyTrackersHint");
 
@@ -230,15 +243,6 @@ const btnSelectNone = $("#btnSelectNone");
 const btnAddCancel = $("#btnAddCancel");
 const addTrackerError = $("#addTrackerError");
 
-// Edit tracker UI
-const editTrackerForm = $("#editTrackerForm");
-const editTrackerName = $("#editTrackerName");
-const editTrackerYearly = $("#editTrackerYearly");
-const editColorSwatches = $("#editColorSwatches");
-const btnEditCancel = $("#btnEditCancel");
-const btnEditDelete = $("#btnEditDelete");
-const editTrackerError = $("#editTrackerError");
-
 /**
  * In-memory
  */
@@ -249,9 +253,6 @@ let trackers = []; // [{id, name, color, year, bookIds, progress, createdAt, upd
 let trackersById = new Map();
 
 let ui = loadUiState();
-
-// Apply auth-theme tints immediately (so login screen also reflects last used tracker color)
-applyAuthTint();
 const requestedNav = {
   view: ui.view || "trackers",
   trackerId: ui.currentTrackerId || null,
@@ -281,10 +282,13 @@ let draftColorHex = null;
 
 // Edit tracker draft state
 let editColorHex = null;
+let editYearlyValue = false;
 
 setupAuth();
 
 function setupAuth() {
+  applyAuthTheme();
+
   loginForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     loginError.textContent = "";
@@ -301,8 +305,7 @@ function setupAuth() {
     }
   });
 
-  btnLogout.addEventListener("click", async () => {
-    closeMenu();
+  btnMenuLogout.addEventListener("click", async () => {
     try {
       await signOut(auth);
     } catch {
@@ -315,10 +318,12 @@ function setupAuth() {
       cleanupSubscriptions();
       currentUser = null;
 
+      closeMenu();
+
       appEl.classList.add("hidden");
       loginView.classList.remove("hidden");
+      applyAuthTheme();
       loginError.textContent = "";
-      applyAuthTint();
       return;
     }
 
@@ -328,14 +333,6 @@ function setupAuth() {
     currentUser = user;
     startAppOnce();
   });
-}
-
-function applyAuthTint() {
-  // Login/Logout should be tinted with the last used tracker color (SOFT_A / SUPERSOFT_A)
-  const hex = ui.lastTrackerColor || "#849eeb";
-  const rgb = hexToRgb(hex);
-  document.documentElement.style.setProperty("--authSoft", rgba(rgb, SOFT_A));
-  document.documentElement.style.setProperty("--authSuperSoft", rgba(rgb, SUPERSOFT_A));
 }
 
 function cleanupSubscriptions() {
@@ -358,34 +355,44 @@ function startAppOnce() {
     openAddTracker();
   });
 
-  // Burger menu (Home)
-  btnMenu.addEventListener("click", (e) => {
-    e.stopPropagation();
+  btnMenu.addEventListener("click", () => {
     toggleMenu();
   });
 
-  menuPanel.addEventListener("click", (e) => {
-    // Keep clicks on menu items from immediately closing via document click
-    e.stopPropagation();
+  menuOverlay.addEventListener("click", (e) => {
+    // close on overlay click; keep clicks inside panel open
+    if (e.target === menuOverlay) closeMenu();
   });
 
-  // Close menu on outside click / escape
-  document.addEventListener("click", () => closeMenu(), { passive: true });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeMenu();
   });
 
-  btnEpic.addEventListener("click", () => {
+  menuEpic.addEventListener("change", () => {
+    // IMPORTANT: toggling epic in the menu must NOT close the menu.
     const prev = getEpicModeLevel();
-    const next = prev === 0 ? 1 : (prev === 1 ? 2 : 0);
+    const next = menuEpic.checked ? (prev === 2 ? 2 : 1) : 0;
     setEpicModeLevel(next, { source: "user" });
   });
 
-  btnBack.addEventListener("click", goBack);
+  // Keep cycling 0 -> 1 -> 2 -> 0 via long-press gesture (optional): tap on label area
+  // (Allows the existing "more epic" mode without adding another UI control.)
+  const menuEpicRow = menuEpic.closest(".menuRow");
+  if (menuEpicRow) {
+    menuEpicRow.addEventListener("contextmenu", (e) => e.preventDefault());
+    menuEpicRow.addEventListener("dblclick", () => {
+      const prev = getEpicModeLevel();
+      const next = prev === 0 ? 1 : (prev === 1 ? 2 : 0);
+      setEpicModeLevel(next, { source: "user" });
+      menuEpic.checked = next > 0;
+    });
+  }
 
   btnEditTracker.addEventListener("click", () => {
     openEditTracker();
   });
+
+  btnBack.addEventListener("click", goBack);
 
 // Chapters interactions
 let pressedChapterTile = null;
@@ -446,30 +453,6 @@ chaptersGrid.addEventListener("click", (e) => {
     setView("trackers");
   });
 
-  // Edit tracker form
-  editTrackerForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    await confirmEditTracker();
-  });
-
-  btnEditCancel.addEventListener("click", () => {
-    setView("tracker");
-  });
-
-  btnEditDelete.addEventListener("click", async () => {
-    const tracker = getCurrentTracker();
-    const name = tracker && tracker.name ? `\"${tracker.name}\"` : "diesen Tracker";
-    const ok = window.confirm(`Willst du ${name} wirklich löschen? Dieser Schritt kann nicht rückgängig gemacht werden.`);
-    if (!ok) return;
-    await deleteCurrentTracker();
-  });
-
-  editColorSwatches.addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-color]");
-    if (!btn) return;
-    setEditColor(btn.dataset.color);
-  });
-
   scopeRow.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-scope]");
     if (!btn) return;
@@ -481,6 +464,43 @@ chaptersGrid.addEventListener("click", (e) => {
     if (!btn) return;
     setDraftColor(btn.dataset.color);
   });
+
+  if (editColorSwatches) {
+    editColorSwatches.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-color]");
+      if (!btn) return;
+      setEditColor(btn.dataset.color);
+    });
+  }
+
+  if (btnEditCancel) {
+    btnEditCancel.addEventListener("click", () => {
+      setView("tracker");
+    });
+  }
+
+  if (btnEditDelete) {
+    btnEditDelete.addEventListener("click", () => {
+      const t = getCurrentTracker();
+      if (!t) return;
+      const ok = window.confirm(`Tracker „${String(t.name || "Tracker")}“ wirklich löschen?`);
+      if (!ok) return;
+      deleteTracker(t.id);
+    });
+  }
+
+  if (editTrackerForm) {
+    editTrackerForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await confirmEditTracker();
+    });
+  }
+
+  if (editYearly) {
+    editYearly.addEventListener("change", () => {
+      editYearlyValue = !!editYearly.checked;
+    });
+  }
 
   bookPicker.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-book]");
@@ -576,7 +596,7 @@ function applyRequestedNavigation() {
   const tid = requestedNav.trackerId;
   const bid = requestedNav.bookId;
 
-  if ((v === "tracker" || v === "edit") && tid && trackersById.has(tid)) {
+  if (v === "tracker" && tid && trackersById.has(tid)) {
     currentTrackerId = tid;
     currentBookId = null;
     const t = trackersById.get(tid);
@@ -605,7 +625,7 @@ function applyRequestedNavigation() {
 
 function normalizeNavigationAfterData() {
   // If we were on tracker/book but tracker is gone, go home
-  if ((currentView === "tracker" || currentView === "edit" || currentView === "book") && currentTrackerId) {
+  if ((currentView === "tracker" || currentView === "book") && currentTrackerId) {
     if (!trackersById.has(currentTrackerId)) {
       currentTrackerId = null;
       currentBookId = null;
@@ -635,22 +655,22 @@ function setView(v, opts = {}) {
   const { skipSave = false, skipRender = false } = opts;
   currentView = v;
 
+  // Close menu on navigation (except when toggling epic inside menu, which does not call setView)
+  closeMenu();
+
   viewTrackers.classList.toggle("hidden", v !== "trackers");
   viewAddTracker.classList.toggle("hidden", v !== "add");
   viewEditTracker.classList.toggle("hidden", v !== "edit");
   viewTracker.classList.toggle("hidden", v !== "tracker");
   viewBook.classList.toggle("hidden", v !== "book");
 
-  // Always close the home menu on navigation
-  closeMenu();
+  // Back button: show for tracker + book (not for add, because it has bottom cancel)
+  btnBack.classList.toggle("hidden", v === "trackers" || v === "add" || v === "edit");
 
-  // Left controls: burger only on home, back only on tracker/book
-  btnMenu.classList.toggle("hidden", v !== "trackers");
-  btnBack.classList.toggle("hidden", !(v === "tracker" || v === "book"));
-
-  // Right actions
+  // Only on home
   btnAddTracker.classList.toggle("hidden", v !== "trackers");
   btnEditTracker.classList.toggle("hidden", v !== "tracker");
+  btnMenu.classList.remove("hidden");
 
   if (!skipSave) saveUiState();
   if (!skipRender) renderCurrentView();
@@ -682,8 +702,6 @@ function renderCurrentView() {
 
 // --- Topbar ---
 function updateTopbar() {
-  // Keep login + menu "Abmelden" button tinted with the last used tracker color.
-  applyAuthTint();
   let pct = 0;
   let barStrong = "transparent";
   let barSoft = "transparent";
@@ -704,12 +722,11 @@ function updateTopbar() {
     const rgb = hexToRgb(draftColorHex || ui.lastTrackerColor || "#cccccc");
     btnSoft = rgba(rgb, SOFT_A);
     btnStrong = rgba(rgb, STRONG_A);
-  } else if (currentView === "edit") {
+  } else if (currentView === "edit" && tracker) {
     topTitle.textContent = "Tracker bearbeiten";
-    topSub.textContent = "";
+    topSub.textContent = String(tracker.name || "Tracker");
 
-    // Keep buttons tinted in edit view
-    const rgb = hexToRgb(editColorHex || ui.lastTrackerColor || "#cccccc");
+    const rgb = hexToRgb((tracker.color || ui.lastTrackerColor || "#cccccc"));
     btnSoft = rgba(rgb, SOFT_A);
     btnStrong = rgba(rgb, STRONG_A);
   } else if (currentView === "tracker" && tracker) {
@@ -766,26 +783,10 @@ function updateTopbar() {
   appEl.style.setProperty("--epcSoft", rgba(ergb, SOFT_A));
   appEl.style.setProperty("--epcStrong", rgba(ergb, STRONG_A));
 
-  const lvl = getEpicModeLevel();
-  if (btnEpic) {
-    btnEpic.setAttribute("aria-pressed", lvl > 0 ? "true" : "false");
-    btnEpic.textContent = (lvl >= 2) ? "More epic" : "Epic";
-    btnEpic.classList.toggle("moreEpic", lvl >= 2);
+  // Keep menu toggle in sync
+  if (menuEpic) {
+    menuEpic.checked = getEpicModeLevel() > 0;
   }
-}
-
-function toggleMenu() {
-  if (!menuPanel) return;
-  if (currentView !== "trackers") return;
-  const willOpen = menuPanel.classList.contains("hidden");
-  menuPanel.classList.toggle("hidden", !willOpen);
-  if (btnMenu) btnMenu.setAttribute("aria-expanded", willOpen ? "true" : "false");
-}
-
-function closeMenu() {
-  if (!menuPanel) return;
-  menuPanel.classList.add("hidden");
-  if (btnMenu) btnMenu.setAttribute("aria-expanded", "false");
 }
 
 // --- Home (Trackers list) ---
@@ -833,6 +834,8 @@ function openTracker(trackerId) {
   const t = trackersById.get(trackerId);
   if (t && t.color) ui.lastTrackerColor = t.color;
 
+  applyAuthTheme();
+
   saveUiState();
   setView("tracker");
 }
@@ -845,18 +848,7 @@ function renderTracker() {
     return;
   }
 
-  // Optional yearly progress bar (percentage of current year elapsed)
-  if (yearProgressWrap && yearProgressFill) {
-    const enabled = !!t.yearly;
-    yearProgressWrap.classList.toggle("hidden", !enabled);
-    if (enabled) {
-      const pct = yearElapsedPct();
-      yearProgressFill.style.setProperty("--yearPct", `${pct}%`);
-      // tint with tracker color
-      const rgb = hexToRgb(t.color || ui.lastTrackerColor || "#849eeb");
-      yearProgressFill.style.setProperty("--yearSoft", rgba(rgb, SOFT_A));
-    }
-  }
+  renderYearProgress(t);
 
   booksGrid.innerHTML = "";
 
@@ -896,6 +888,26 @@ function renderTracker() {
 
     booksGrid.appendChild(tile);
   });
+}
+
+function renderYearProgress(tracker) {
+  if (!yearProgress || !yearProgressFill) return;
+
+  const on = !!tracker.yearly;
+  yearProgress.classList.toggle("hidden", !on);
+  if (!on) return;
+
+  const now = new Date();
+  const y = now.getFullYear();
+  const start = new Date(y, 0, 1, 0, 0, 0, 0).getTime();
+  const end = new Date(y + 1, 0, 1, 0, 0, 0, 0).getTime();
+  const p = Math.max(0, Math.min(1, (now.getTime() - start) / (end - start)));
+  const pct = Math.round(p * 100);
+
+  const c = tracker.color || ui.lastTrackerColor || "#849eeb";
+  const rgb = hexToRgb(c);
+  appEl.style.setProperty("--yearStrong", rgba(rgb, STRONG_A));
+  yearProgressFill.style.width = `${pct}%`;
 }
 
 function openBook(bookId) {
@@ -1271,7 +1283,7 @@ function setEpicModeLevel(level, { source = "code" } = {}) {
 
   // More Epic activation: dramatic button "camera zoom" + satirical overlays.
   if (source === "user" && prev === 1 && next === 2) {
-    epicDramaticZoomTo(btnEpic);
+    epicDramaticZoomTo(btnMenu);
     epicSlamOverlay({ count: 3, intensity: 1.0, text: "EPIC" });
     epicFlashLaserGrid({ intensity: 0.9, duration: 520 });
   }
@@ -1755,9 +1767,7 @@ function epicTotalEskalation(originTile, { trackerColor = "#8cc0ff", bookRgb = [
   banner.style.setProperty("--bannerDur", `${bannerMs}ms`);
   document.body.appendChild(banner);
   window.setTimeout(() => banner.remove(), bannerMs);
-}
-
-// --- Book (progress) ---
+} (progress) ---
 function toggleChapter(tracker, bookId, ch) {
   const b = BOOK_BY_ID.get(bookId);
   if (!b) return;
@@ -1824,9 +1834,26 @@ function persistBookProgress(tracker, bookId, set, opts = {}) {
 
 // --- Add Tracker ---
 function buildAddTrackerUiOnce() {
+  // Swatches
   const palette = generatePalette();
-  buildColorSwatches(colorSwatches, palette);
-  buildColorSwatches(editColorSwatches, palette);
+  colorSwatches.innerHTML = "";
+  if (editColorSwatches) editColorSwatches.innerHTML = "";
+  palette.forEach((hex) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "swatchBtn";
+    btn.dataset.color = hex;
+    btn.style.background = hex;
+    btn.title = hex;
+    btn.setAttribute("aria-label", `Farbe ${hex}`);
+    colorSwatches.appendChild(btn);
+
+    // Edit view gets the same palette
+    if (editColorSwatches) {
+      const btn2 = btn.cloneNode(true);
+      editColorSwatches.appendChild(btn2);
+    }
+  });
 
   // Book pickers
   buildBookPickGrid(pickGridOT, BOOKS.filter(b => b.testament === "ot"));
@@ -1840,21 +1867,6 @@ function buildAddTrackerUiOnce() {
 
   trackerNameInput.value = "";
   updateAddTrackerUI();
-}
-
-function buildColorSwatches(container, palette) {
-  if (!container) return;
-  container.innerHTML = "";
-  (palette || []).forEach((hex) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "swatchBtn";
-    btn.dataset.color = hex;
-    btn.style.background = hex;
-    btn.title = hex;
-    btn.setAttribute("aria-label", `Farbe ${hex}`);
-    container.appendChild(btn);
-  });
 }
 
 function buildBookPickGrid(container, books) {
@@ -1894,21 +1906,16 @@ function renderAddTrackerView() {
   updateAddTrackerUI();
 }
 
-// --- Edit Tracker ---
 function openEditTracker() {
   const t = getCurrentTracker();
-  if (!t) {
-    setView("trackers");
-    return;
-  }
+  if (!t) return;
 
   editTrackerError.textContent = "";
   editTrackerName.value = String(t.name || "");
-  if (editTrackerYearly) editTrackerYearly.checked = !!t.yearly;
+  editColorHex = isValidHexColor(t.color) ? t.color : (ui.lastTrackerColor || "#849eeb");
+  editYearlyValue = !!t.yearly;
 
-  const palette = Array.from(editColorSwatches.querySelectorAll("[data-color]")).map(el => el.dataset.color);
-  editColorHex = (isValidHexColor(t.color) ? t.color : null) || ui.lastTrackerColor || palette[15] || palette[0] || "#8cc0ff";
-
+  if (editYearly) editYearly.checked = editYearlyValue;
   updateEditTrackerUI();
   setView("edit");
 }
@@ -1924,37 +1931,33 @@ function setEditColor(hex) {
 }
 
 function updateEditTrackerUI() {
-  // Color swatches
-  editColorSwatches.querySelectorAll("[data-color]").forEach((btn) => {
-    btn.classList.toggle("selected", btn.dataset.color === editColorHex);
-  });
+  if (!editColorHex) editColorHex = ui.lastTrackerColor || "#849eeb";
 
-  // Make pills & inputs reflect chosen color (same look-and-feel as add view)
-  const rgb = hexToRgb(editColorHex || ui.lastTrackerColor || "#cccccc");
-  const soft = rgba(rgb, SOFT_A);
-  const strong = rgba(rgb, STRONG_A);
-  const superSoft = rgba(rgb, SUPERSOFT_A);
-  appEl.style.setProperty("--draftSoft", soft);
-  appEl.style.setProperty("--draftStrong", strong);
-  appEl.style.setProperty("--draftSuperSoft", superSoft);
-  appEl.style.setProperty("--btnYearSoft", soft);
-  appEl.style.setProperty("--btnYearStrong", strong);
+  // Color swatches
+  if (editColorSwatches) {
+    editColorSwatches.querySelectorAll("[data-color]").forEach((btn) => {
+      btn.classList.toggle("selected", btn.dataset.color === editColorHex);
+    });
+  }
+
+  const rgb = hexToRgb(editColorHex || "#cccccc");
+  appEl.style.setProperty("--draftSoft", rgba(rgb, SOFT_A));
+  appEl.style.setProperty("--draftStrong", rgba(rgb, STRONG_A));
+  appEl.style.setProperty("--draftSuperSoft", rgba(rgb, SUPERSOFT_A));
 }
 
 async function confirmEditTracker() {
-  editTrackerError.textContent = "";
-
   const t = getCurrentTracker();
-  if (!t || !currentUser) return;
+  if (!t) return;
 
+  editTrackerError.textContent = "";
   const name = String(editTrackerName.value || "").trim();
   if (!name) {
-    editTrackerError.textContent = "Bitte einen Namen eingeben.";
+    editTrackerError.textContent = "Name fehlt.";
     return;
   }
-
-  if (!editColorHex || !isValidHexColor(editColorHex)) {
-    editTrackerError.textContent = "Bitte eine Farbe auswählen.";
+  if (!isValidHexColor(editColorHex)) {
+    editTrackerError.textContent = "Ungültige Farbe.";
     return;
   }
 
@@ -1963,12 +1966,15 @@ async function confirmEditTracker() {
     await updateDoc(ref, {
       name,
       color: editColorHex,
-      yearly: !!(editTrackerYearly && editTrackerYearly.checked),
-      updatedAt: serverTimestamp(),
+      yearly: !!editYearlyValue,
+      updatedAt: serverTimestamp()
     });
 
+    // Keep UI tint consistent
     ui.lastTrackerColor = editColorHex;
     saveUiState();
+    applyAuthTheme();
+
     setView("tracker");
   } catch (err) {
     console.error("Tracker update failed:", err);
@@ -1976,21 +1982,17 @@ async function confirmEditTracker() {
   }
 }
 
-async function deleteCurrentTracker() {
-  editTrackerError.textContent = "";
-  if (!currentUser || !currentTrackerId) return;
-
+async function deleteTracker(trackerId) {
+  if (!trackerId || !currentUser) return;
   try {
-    const ref = doc(db, "nt-365", currentUser.uid, "trackers", currentTrackerId);
+    const ref = doc(db, "nt-365", currentUser.uid, "trackers", trackerId);
     await deleteDoc(ref);
-
     currentTrackerId = null;
     currentBookId = null;
-    saveUiState();
     setView("trackers");
   } catch (err) {
     console.error("Tracker delete failed:", err);
-    editTrackerError.textContent = "Löschen fehlgeschlagen.";
+    if (editTrackerError) editTrackerError.textContent = "Löschen fehlgeschlagen.";
   }
 }
 
@@ -2090,6 +2092,7 @@ async function confirmAddTracker() {
     const ref = await addDoc(collection(db, "nt-365", currentUser.uid, "trackers"), {
       name,
       color: draftColorHex,
+      yearly: false,
       year: new Date().getFullYear(),
       bookIds,
       progress: {},
@@ -2113,16 +2116,6 @@ function trackerYear(tracker) {
   const y = Number(tracker && tracker.year);
   if (Number.isFinite(y) && y >= 1900 && y <= 3000) return String(y);
   return String(new Date().getFullYear());
-}
-
-function yearElapsedPct(now = new Date()) {
-  const year = now.getFullYear();
-  const start = new Date(year, 0, 1, 0, 0, 0, 0);
-  const end = new Date(year + 1, 0, 1, 0, 0, 0, 0);
-  const totalMs = end.getTime() - start.getTime();
-  const elapsedMs = Math.min(Math.max(now.getTime() - start.getTime(), 0), totalMs);
-  const pct = totalMs ? (elapsedMs / totalMs) * 100 : 0;
-  return Math.min(100, Math.max(0, Math.round(pct)));
 }
 
 function normalizeBookIds(ids) {
@@ -2284,6 +2277,33 @@ function hslToRgb(h, s, l) {
   const g = Math.round((g1 + m) * 255);
   const b = Math.round((b1 + m) * 255);
   return [r, g, b];
+}
+
+function applyAuthTheme() {
+  // Theme for login + auth buttons (Anmelden/Abmelden)
+  const c = ui.lastTrackerColor || "#849eeb";
+  const rgb = hexToRgb(c);
+  document.documentElement.style.setProperty("--authSoft", rgba(rgb, SOFT_A));
+  document.documentElement.style.setProperty("--authSuperSoft", rgba(rgb, SUPERSOFT_A));
+}
+
+function openMenu() {
+  if (!menuOverlay) return;
+  menuOverlay.classList.remove("hidden");
+  menuOverlay.setAttribute("aria-hidden", "false");
+  if (menuEpic) menuEpic.checked = getEpicModeLevel() > 0;
+}
+
+function closeMenu() {
+  if (!menuOverlay) return;
+  menuOverlay.classList.add("hidden");
+  menuOverlay.setAttribute("aria-hidden", "true");
+}
+
+function toggleMenu() {
+  if (!menuOverlay) return;
+  if (menuOverlay.classList.contains("hidden")) openMenu();
+  else closeMenu();
 }
 
 // --- Misc ---
