@@ -714,7 +714,7 @@ function updateTopbar() {
     btnStrong = rgba(rgb, STRONG_A);
   } else if (currentView === "edit" && tracker) {
     topTitle.textContent = "Tracker bearbeiten";
-    topSub.textContent = String(tracker.name || "Tracker");
+    topSub.textContent = "";
 
     const rgb = hexToRgb((tracker.color || ui.lastTrackerColor || "#cccccc"));
     btnSoft = rgba(rgb, SOFT_A);
@@ -774,10 +774,7 @@ function updateTopbar() {
   appEl.style.setProperty("--epcStrong", rgba(ergb, STRONG_A));
 
   // Keep menu button in sync
-  if (btnMenuEpic) {
-    const lvl = getEpicModeLevel();
-    btnMenuEpic.textContent = (lvl === 0) ? "Epic: Aus" : (lvl === 1) ? "Epic: An" : "Epic: Mehr";
-  }
+  updateMenuEpicLabel();
 }
 
 // --- Home (Trackers list) ---
@@ -2286,7 +2283,17 @@ function applyAuthTheme() {
 function updateMenuEpicLabel() {
   if (!btnMenuEpic) return;
   const lvl = getEpicModeLevel();
-  btnMenuEpic.textContent = lvl === 0 ? "Epic: Aus" : (lvl === 1 ? "Epic: An" : "Epic: Mehr");
+  // Labels: Epic: Aus / Epic: An / SUPER-EPIC
+  if (lvl === 0) {
+    btnMenuEpic.textContent = "Epic: Aus";
+    btnMenuEpic.classList.remove("moreEpic");
+  } else if (lvl === 1) {
+    btnMenuEpic.textContent = "Epic: An";
+    btnMenuEpic.classList.remove("moreEpic");
+  } else {
+    btnMenuEpic.textContent = "SUPER-EPIC";
+    btnMenuEpic.classList.add("moreEpic");
+  }
 }
 
 function openMenu() {

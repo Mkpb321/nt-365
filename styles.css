@@ -368,6 +368,11 @@ button{
 }
 .menuBtn:active{ filter: none; }
 
+.menuBtn.moreEpic{
+  box-shadow: 0 0 0 2px rgba(255,255,255,.55), 0 10px 26px rgba(0,0,0,.10);
+  animation: epic-epc-pulse 1100ms ease-in-out infinite;
+}
+
 /* Switch */
 .switch{ position: relative; width: 46px; height: 26px; display: inline-block; }
 .switch input{ position: absolute; inset: 0; opacity: 0; }
