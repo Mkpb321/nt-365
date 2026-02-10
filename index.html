@@ -57,18 +57,72 @@
       </div>
 
       <div class="topActions" id="topActions">
-        <button class="topbtn" id="btnAddYear" aria-label="Jahr hinzufügen" title="Jahr hinzufügen">＋</button>
+        <button class="topbtn" id="btnAddTracker" aria-label="Tracker hinzufügen" title="Tracker hinzufügen">＋</button>
         <button class="topbtn" id="btnLogout" aria-label="Logout" title="Logout">⎋</button>
       </div>
     </header>
 
-    <!-- VIEW: YEARS -->
-    <main class="view" id="viewYears" aria-label="Jahresübersicht">
-      <div class="years" id="yearsList"></div>
+    <!-- VIEW: TRACKERS (Home) -->
+    <main class="view" id="viewTrackers" aria-label="Trackerübersicht">
+      <div class="years" id="trackersList"></div>
+      <div class="emptyHint hidden" id="emptyTrackersHint">Noch keine Tracker. Tippe auf ＋ um einen Tracker anzulegen.</div>
     </main>
 
-    <!-- VIEW: YEAR DETAIL -->
-    <main class="view hidden" id="viewYear" aria-label="Jahr">
+    <!-- VIEW: ADD TRACKER -->
+    <main class="view hidden" id="viewAddTracker" aria-label="Tracker hinzufügen">
+      <form class="addForm" id="addTrackerForm">
+        <div class="field">
+          <div class="fieldLabel">Name</div>
+          <input class="textInput" id="trackerName" type="text" maxlength="60" placeholder="z.B. Bibel 2026" required />
+        </div>
+
+        <div class="field">
+          <div class="fieldLabel">Farbe</div>
+          <div class="swatches" id="colorSwatches" aria-label="Farbauswahl"></div>
+        </div>
+
+        <div class="field">
+          <div class="fieldLabel">Inhalt</div>
+          <div class="scopeRow" role="radiogroup" aria-label="Tracker-Inhalt">
+            <button type="button" class="chipBtn" data-scope="bible">Ganze Bibel</button>
+            <button type="button" class="chipBtn" data-scope="ot">AT</button>
+            <button type="button" class="chipBtn" data-scope="nt">NT</button>
+            <button type="button" class="chipBtn" data-scope="custom">Bücher wählen</button>
+          </div>
+          <div class="mutedLine" id="booksSummary"></div>
+        </div>
+
+        <div class="bookPicker hidden" id="bookPicker" aria-label="Bücher auswählen">
+          <div class="bookPickerHeader">
+            <div class="fieldLabel" style="margin:0">Bücher</div>
+            <div class="pickerActions">
+              <button type="button" class="miniBtn" id="btnSelectAll">Alle</button>
+              <button type="button" class="miniBtn" id="btnSelectNone">Keine</button>
+            </div>
+          </div>
+
+          <div class="bookPickSection">
+            <div class="sectionTitle">AT</div>
+            <div class="pickGrid" id="pickGridOT"></div>
+          </div>
+
+          <div class="bookPickSection">
+            <div class="sectionTitle">NT</div>
+            <div class="pickGrid" id="pickGridNT"></div>
+          </div>
+        </div>
+
+        <div class="formError" id="addTrackerError" aria-live="polite"></div>
+
+        <div class="actionsRow bottomActions">
+          <button type="button" class="pill" id="btnAddCancel">Abbrechen</button>
+          <button type="submit" class="pill" id="btnAddConfirm">Hinzufügen</button>
+        </div>
+      </form>
+    </main>
+
+    <!-- VIEW: TRACKER DETAIL -->
+    <main class="view hidden" id="viewTracker" aria-label="Tracker">
       <div class="booksGrid" id="booksGrid"></div>
     </main>
 

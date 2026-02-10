@@ -1,4 +1,4 @@
-// NT 365
+// NT 365 – Multi-Tracker (Firestore)
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
   getAuth,
@@ -10,23 +10,13 @@ import {
   getFirestore,
   collection,
   doc,
-  setDoc,
+  addDoc,
   updateDoc,
   onSnapshot,
-  serverTimestamp,
-  arrayUnion,
-  arrayRemove
+  query,
+  orderBy,
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-
-/**
- * Storage:
- * - Firestore: reading progress + which years exist
- *   /nt-365/{uid}/years/{YYYY}
- * - Browser (localStorage): UI/location only (last view/year/book + lastYear for colors)
- */
-
-const ROOT_COLLECTION = "nt-365";
-const UI_STORAGE_KEY = "nt365_ui_v1";
 
 // Firebase configuration (provided)
 const firebaseConfig = {
@@ -42,83 +32,88 @@ const fbApp = initializeApp(firebaseConfig);
 const auth = getAuth(fbApp);
 const db = getFirestore(fbApp);
 
+// Local storage only for UI/navigation state (no progress)
+const UI_STATE_KEY = "nt365_ui_state_v1";
+
+// --- Bible books (OT + NT) ---
 const BOOKS = [
-  { id: "mat", name: "Matthäus", chapters: 28, group: "Evangelien" },
-  { id: "mar", name: "Markus", chapters: 16, group: "Evangelien" },
-  { id: "luk", name: "Lukas", chapters: 24, group: "Evangelien" },
-  { id: "joh", name: "Johannes", chapters: 21, group: "Evangelien" },
+  // AT
+  { id: "gen", name: "1. Mose", short: "Gen", chapters: 50, testament: "ot" },
+  { id: "exo", name: "2. Mose", short: "Ex", chapters: 40, testament: "ot" },
+  { id: "lev", name: "3. Mose", short: "Lev", chapters: 27, testament: "ot" },
+  { id: "num", name: "4. Mose", short: "Num", chapters: 36, testament: "ot" },
+  { id: "deu", name: "5. Mose", short: "Dtn", chapters: 34, testament: "ot" },
+  { id: "jos", name: "Josua", short: "Jos", chapters: 24, testament: "ot" },
+  { id: "jdg", name: "Richter", short: "Ri", chapters: 21, testament: "ot" },
+  { id: "rut", name: "Ruth", short: "Rut", chapters: 4, testament: "ot" },
+  { id: "1sa", name: "1. Samuel", short: "1 Sam", chapters: 31, testament: "ot" },
+  { id: "2sa", name: "2. Samuel", short: "2 Sam", chapters: 24, testament: "ot" },
+  { id: "1ki", name: "1. Könige", short: "1 Kön", chapters: 22, testament: "ot" },
+  { id: "2ki", name: "2. Könige", short: "2 Kön", chapters: 25, testament: "ot" },
+  { id: "1ch", name: "1. Chronik", short: "1 Chr", chapters: 29, testament: "ot" },
+  { id: "2ch", name: "2. Chronik", short: "2 Chr", chapters: 36, testament: "ot" },
+  { id: "ezr", name: "Esra", short: "Esra", chapters: 10, testament: "ot" },
+  { id: "neh", name: "Nehemia", short: "Neh", chapters: 13, testament: "ot" },
+  { id: "est", name: "Esther", short: "Est", chapters: 10, testament: "ot" },
+  { id: "job", name: "Hiob", short: "Hi", chapters: 42, testament: "ot" },
+  { id: "psa", name: "Psalmen", short: "Ps", chapters: 150, testament: "ot" },
+  { id: "pro", name: "Sprüche", short: "Spr", chapters: 31, testament: "ot" },
+  { id: "ecc", name: "Prediger", short: "Pred", chapters: 12, testament: "ot" },
+  { id: "sng", name: "Hoheslied", short: "Hld", chapters: 8, testament: "ot" },
+  { id: "isa", name: "Jesaja", short: "Jes", chapters: 66, testament: "ot" },
+  { id: "jer", name: "Jeremia", short: "Jer", chapters: 52, testament: "ot" },
+  { id: "lam", name: "Klagelieder", short: "Klgl", chapters: 5, testament: "ot" },
+  { id: "ezk", name: "Hesekiel", short: "Hes", chapters: 48, testament: "ot" },
+  { id: "dan", name: "Daniel", short: "Dan", chapters: 12, testament: "ot" },
+  { id: "hos", name: "Hosea", short: "Hos", chapters: 14, testament: "ot" },
+  { id: "jol", name: "Joel", short: "Joel", chapters: 3, testament: "ot" },
+  { id: "amo", name: "Amos", short: "Am", chapters: 9, testament: "ot" },
+  { id: "oba", name: "Obadja", short: "Ob", chapters: 1, testament: "ot" },
+  { id: "jon", name: "Jona", short: "Jona", chapters: 4, testament: "ot" },
+  { id: "mic", name: "Micha", short: "Mi", chapters: 7, testament: "ot" },
+  { id: "nam", name: "Nahum", short: "Nah", chapters: 3, testament: "ot" },
+  { id: "hab", name: "Habakuk", short: "Hab", chapters: 3, testament: "ot" },
+  { id: "zep", name: "Zefanja", short: "Zef", chapters: 3, testament: "ot" },
+  { id: "hag", name: "Haggai", short: "Hag", chapters: 2, testament: "ot" },
+  { id: "zec", name: "Sacharja", short: "Sach", chapters: 14, testament: "ot" },
+  { id: "mal", name: "Maleachi", short: "Mal", chapters: 4, testament: "ot" },
 
-  { id: "act", name: "Apostelgeschichte", chapters: 28, group: "Geschichte" },
-
-  { id: "rom", name: "Römer", chapters: 16, group: "Paulusbriefe" },
-  { id: "1co", name: "1. Korinther", chapters: 16, group: "Paulusbriefe" },
-  { id: "2co", name: "2. Korinther", chapters: 13, group: "Paulusbriefe" },
-  { id: "gal", name: "Galater", chapters: 6, group: "Paulusbriefe" },
-  { id: "eph", name: "Epheser", chapters: 6, group: "Paulusbriefe" },
-  { id: "phi", name: "Philipper", chapters: 4, group: "Paulusbriefe" },
-  { id: "col", name: "Kolosser", chapters: 4, group: "Paulusbriefe" },
-  { id: "1th", name: "1. Thessalonicher", chapters: 5, group: "Paulusbriefe" },
-  { id: "2th", name: "2. Thessalonicher", chapters: 3, group: "Paulusbriefe" },
-  { id: "1ti", name: "1. Timotheus", chapters: 6, group: "Paulusbriefe" },
-  { id: "2ti", name: "2. Timotheus", chapters: 4, group: "Paulusbriefe" },
-  { id: "tit", name: "Titus", chapters: 3, group: "Paulusbriefe" },
-  { id: "phm", name: "Philemon", chapters: 1, group: "Paulusbriefe" },
-
-  { id: "heb", name: "Hebräer", chapters: 13, group: "Allgemeine Briefe" },
-  { id: "jam", name: "Jakobus", chapters: 5, group: "Allgemeine Briefe" },
-  { id: "1pe", name: "1. Petrus", chapters: 5, group: "Allgemeine Briefe" },
-  { id: "2pe", name: "2. Petrus", chapters: 3, group: "Allgemeine Briefe" },
-  { id: "1jo", name: "1. Johannes", chapters: 5, group: "Allgemeine Briefe" },
-  { id: "2jo", name: "2. Johannes", chapters: 1, group: "Allgemeine Briefe" },
-  { id: "3jo", name: "3. Johannes", chapters: 1, group: "Allgemeine Briefe" },
-  { id: "jud", name: "Judas", chapters: 1, group: "Allgemeine Briefe" },
-
-  { id: "rev", name: "Offenbarung", chapters: 22, group: "Prophetie" },
+  // NT
+  { id: "mat", name: "Matthäus", short: "Mt", chapters: 28, testament: "nt" },
+  { id: "mar", name: "Markus", short: "Mk", chapters: 16, testament: "nt" },
+  { id: "luk", name: "Lukas", short: "Lk", chapters: 24, testament: "nt" },
+  { id: "joh", name: "Johannes", short: "Joh", chapters: 21, testament: "nt" },
+  { id: "act", name: "Apostelgeschichte", short: "Apg", chapters: 28, testament: "nt" },
+  { id: "rom", name: "Römer", short: "Röm", chapters: 16, testament: "nt" },
+  { id: "1co", name: "1. Korinther", short: "1. Kor", chapters: 16, testament: "nt" },
+  { id: "2co", name: "2. Korinther", short: "2. Kor", chapters: 13, testament: "nt" },
+  { id: "gal", name: "Galater", short: "Gal", chapters: 6, testament: "nt" },
+  { id: "eph", name: "Epheser", short: "Eph", chapters: 6, testament: "nt" },
+  { id: "phi", name: "Philipper", short: "Phil", chapters: 4, testament: "nt" },
+  { id: "col", name: "Kolosser", short: "Kol", chapters: 4, testament: "nt" },
+  { id: "1th", name: "1. Thessalonicher", short: "1. Thess", chapters: 5, testament: "nt" },
+  { id: "2th", name: "2. Thessalonicher", short: "2. Thess", chapters: 3, testament: "nt" },
+  { id: "1ti", name: "1. Timotheus", short: "1. Tim", chapters: 6, testament: "nt" },
+  { id: "2ti", name: "2. Timotheus", short: "2. Tim", chapters: 4, testament: "nt" },
+  { id: "tit", name: "Titus", short: "Tit", chapters: 3, testament: "nt" },
+  { id: "phm", name: "Philemon", short: "Phlm", chapters: 1, testament: "nt" },
+  { id: "heb", name: "Hebräer", short: "Hebr", chapters: 13, testament: "nt" },
+  { id: "jam", name: "Jakobus", short: "Jak", chapters: 5, testament: "nt" },
+  { id: "1pe", name: "1. Petrus", short: "1. Petr", chapters: 5, testament: "nt" },
+  { id: "2pe", name: "2. Petrus", short: "2. Petr", chapters: 3, testament: "nt" },
+  { id: "1jo", name: "1. Johannes", short: "1. Joh", chapters: 5, testament: "nt" },
+  { id: "2jo", name: "2. Johannes", short: "2. Joh", chapters: 1, testament: "nt" },
+  { id: "3jo", name: "3. Johannes", short: "3. Joh", chapters: 1, testament: "nt" },
+  { id: "jud", name: "Judas", short: "Jud", chapters: 1, testament: "nt" },
+  { id: "rev", name: "Offenbarung", short: "Offb", chapters: 22, testament: "nt" },
 ];
 
-const BOOK_SHORT = {
-  mat: "Mt",
-  mar: "Mk",
-  luk: "Lk",
-  joh: "Joh",
-  act: "Apg",
-  rom: "Röm",
-  "1co": "1. Kor",
-  "2co": "2. Kor",
-  gal: "Gal",
-  eph: "Eph",
-  phi: "Phil",
-  col: "Kol",
-  "1th": "1. Thess",
-  "2th": "2. Thess",
-  "1ti": "1. Tim",
-  "2ti": "2. Tim",
-  tit: "Tit",
-  phm: "Phlm",
-  heb: "Hebr",
-  jam: "Jak",
-  "1pe": "1. Petr",
-  "2pe": "2. Petr",
-  "1jo": "1. Joh",
-  "2jo": "2. Joh",
-  "3jo": "3. Joh",
-  jud: "Jud",
-  rev: "Offb",
-};
+const BOOK_BY_ID = new Map(BOOKS.map(b => [b.id, b]));
+const OT_BOOK_IDS = BOOKS.filter(b => b.testament === "ot").map(b => b.id);
+const NT_BOOK_IDS = BOOKS.filter(b => b.testament === "nt").map(b => b.id);
 
-const GROUP_ORDER = ["Evangelien", "Geschichte", "Paulusbriefe", "Allgemeine Briefe", "Prophetie"];
-
-// Intensivere RGBs (direkt geändert)
-const GROUP_RGB = {
-  "Evangelien": [140, 192, 255],
-  "Geschichte": [122, 230, 185],
-  "Paulusbriefe": [188, 150, 255],
-  "Allgemeine Briefe": [255, 195, 120],
-  "Prophetie": [255, 145, 195],
-};
-
-const STRONG_A = 1;     // gelesen
-const SOFT_A = 0.35;    // ungelesen
+const STRONG_A = 1;
+const SOFT_A = 0.35;
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -137,40 +132,69 @@ const topbar = $("#topbar");
 const btnBack = $("#btnBack");
 const topTitle = $("#topTitle");
 const topSub = $("#topSub");
-const btnAddYear = $("#btnAddYear");
+const btnAddTracker = $("#btnAddTracker");
 const btnLogout = $("#btnLogout");
 
-const viewYears = $("#viewYears");
-const viewYear = $("#viewYear");
+const viewTrackers = $("#viewTrackers");
+const viewAddTracker = $("#viewAddTracker");
+const viewTracker = $("#viewTracker");
 const viewBook = $("#viewBook");
 
-const elYearsList = $("#yearsList");
+const elTrackersList = $("#trackersList");
+const emptyTrackersHint = $("#emptyTrackersHint");
+
 const booksGrid = $("#booksGrid");
 const chaptersGrid = $("#chaptersGrid");
 const btnMarkAll = $("#btnMarkAll");
 const btnMarkNone = $("#btnMarkNone");
 
-// Browser UI/location state (local only)
+// Add tracker UI
+const addTrackerForm = $("#addTrackerForm");
+const trackerNameInput = $("#trackerName");
+const colorSwatches = $("#colorSwatches");
+const scopeRow = $(".scopeRow");
+const booksSummary = $("#booksSummary");
+const bookPicker = $("#bookPicker");
+const pickGridOT = $("#pickGridOT");
+const pickGridNT = $("#pickGridNT");
+const btnSelectAll = $("#btnSelectAll");
+const btnSelectNone = $("#btnSelectNone");
+const btnAddCancel = $("#btnAddCancel");
+const addTrackerError = $("#addTrackerError");
+
+/**
+ * In-memory
+ */
+let currentUser = null;
+let unsubTrackers = null;
+
+let trackers = []; // [{id, name, color, year, bookIds, progress, createdAt, updatedAt}]
+let trackersById = new Map();
+
 let ui = loadUiState();
+const requestedNav = {
+  view: ui.view || "trackers",
+  trackerId: ui.currentTrackerId || null,
+  bookId: ui.currentBookId || null,
+};
 
-// Firestore progress state (per-user)
-let currentUid = null;
-let unsubscribeYears = null;
-let remote = { yearsOrder: [], years: {} }; // years: { [yearKey]: { [bookId]: number[] } }
-
-// Navigation
-let currentYear = null;
+// Start always on home; after the first Firestore snapshot we restore the last page.
+let currentView = "trackers"; // trackers | add | tracker | book
+let currentTrackerId = null;
 let currentBookId = null;
-let currentView = "years"; // years | year | book
-let uiWired = false;
-let allowUiPersist = false;
+let initialSnapshotSeen = false;
+let requestedNavApplied = false;
+
 let started = false;
-let restoredAfterRemote = false;
+
+// Add tracker draft state
+let draftScope = "nt"; // bible | ot | nt | custom
+let draftBookIds = new Set(NT_BOOK_IDS);
+let draftColorHex = null;
 
 setupAuth();
 
 function setupAuth() {
-  // Login submit
   loginForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     loginError.textContent = "";
@@ -187,402 +211,337 @@ function setupAuth() {
     }
   });
 
-  // Logout
   btnLogout.addEventListener("click", async () => {
-    try { await signOut(auth); } catch { /* ignore */ }
+    try {
+      await signOut(auth);
+    } catch {
+      // ignore
+    }
   });
 
   onAuthStateChanged(auth, (user) => {
     if (!user) {
-      teardownUser();
+      cleanupSubscriptions();
+      currentUser = null;
+
       appEl.classList.add("hidden");
       loginView.classList.remove("hidden");
       loginError.textContent = "";
       return;
     }
 
-    // signed in
     loginView.classList.add("hidden");
     appEl.classList.remove("hidden");
-    startAppOnce(user.uid);
+
+    currentUser = user;
+    startAppOnce();
   });
 }
 
-function teardownUser() {
-  if (typeof unsubscribeYears === "function") {
-    try { unsubscribeYears(); } catch { /* ignore */ }
+function cleanupSubscriptions() {
+  if (unsubTrackers) {
+    try { unsubTrackers(); } catch { /* noop */ }
   }
-  unsubscribeYears = null;
-  currentUid = null;
-  remote = { yearsOrder: [], years: {} };
-  currentYear = null;
-  currentBookId = null;
-  currentView = "years";
-  started = false;
-  restoredAfterRemote = false;
-  allowUiPersist = false;
+  unsubTrackers = null;
 }
 
-function startAppOnce(uid) {
-  if (started && currentUid === uid) {
-    // still update header vars
-    updateTopbar();
+function startAppOnce() {
+  if (started) {
+    subscribeTrackers();
     setView(currentView);
     return;
   }
-
   started = true;
-  currentUid = uid;
 
-  // Wire UI interactions (once)
-if (!uiWired) {
-  btnAddYear.addEventListener("click", addYearFlow);
+  // Wire events
+  btnAddTracker.addEventListener("click", () => {
+    openAddTracker();
+  });
+
   btnBack.addEventListener("click", goBack);
 
+  // Chapters click
   chaptersGrid.addEventListener("click", (e) => {
     const tile = e.target.closest("[data-ch]");
-    if (!tile || !currentYear || !currentBookId) return;
+    if (!tile) return;
     const ch = Number(tile.dataset.ch);
-    toggleChapter(currentYear, currentBookId, ch);
-    updateBookUI();
-    updateYearUI();
+    if (!Number.isFinite(ch)) return;
+    const tracker = getCurrentTracker();
+    if (!tracker || !currentBookId) return;
+
+    toggleChapter(tracker, currentBookId, ch);
   });
 
   btnMarkAll.addEventListener("click", () => {
-    if (!currentYear || !currentBookId) return;
-    markAllChapters(currentYear, currentBookId);
-    updateBookUI();
-    updateYearUI();
+    const tracker = getCurrentTracker();
+    if (!tracker || !currentBookId) return;
+    markAllChapters(tracker, currentBookId);
   });
 
   btnMarkNone.addEventListener("click", () => {
-    if (!currentYear || !currentBookId) return;
-    clearAllChapters(currentYear, currentBookId);
-    updateBookUI();
-    updateYearUI();
+    const tracker = getCurrentTracker();
+    if (!tracker || !currentBookId) return;
+    clearAllChapters(tracker, currentBookId);
+  });
+
+  // Add tracker form
+  addTrackerForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    await confirmAddTracker();
+  });
+
+  btnAddCancel.addEventListener("click", () => {
+    setView("trackers");
+  });
+
+  scopeRow.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-scope]");
+    if (!btn) return;
+    setDraftScope(btn.dataset.scope);
+  });
+
+  colorSwatches.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-color]");
+    if (!btn) return;
+    setDraftColor(btn.dataset.color);
+  });
+
+  bookPicker.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-book]");
+    if (!btn) return;
+    if (draftScope !== "custom") return;
+    toggleDraftBook(btn.dataset.book);
+  });
+
+  btnSelectAll.addEventListener("click", () => {
+    if (draftScope !== "custom") return;
+    draftBookIds = new Set([...OT_BOOK_IDS, ...NT_BOOK_IDS]);
+    updateAddTrackerUI();
+  });
+
+  btnSelectNone.addEventListener("click", () => {
+    if (draftScope !== "custom") return;
+    draftBookIds = new Set();
+    updateAddTrackerUI();
   });
 
   // prevent zoom on double tap (best-effort)
   document.addEventListener("dblclick", (e) => e.preventDefault(), { passive: false });
 
-  uiWired = true;
+  // Build static add-tracker UI once
+  buildAddTrackerUiOnce();
+
+  subscribeTrackers();
+  // Show home immediately; last page is restored after the first Firestore snapshot.
+  setView("trackers", { skipSave: true });
 }
 
-  // Start with years view (empty until Firestore loads)
-  setView("years");
-  renderYears();
+function subscribeTrackers() {
+  if (!currentUser) return;
+  if (unsubTrackers) return; // already subscribed
 
-  // Subscribe to Firestore years; first snapshot will also restore UI state
-  subscribeYears(uid);
-}
+  const colRef = collection(db, "nt-365", currentUser.uid, "trackers");
+  const q = query(colRef, orderBy("updatedAt", "desc"));
 
-function yearsCollectionRef(uid) {
-  return collection(db, ROOT_COLLECTION, uid, "years");
-}
-function yearDocRef(uid, yearKey) {
-  return doc(db, ROOT_COLLECTION, uid, "years", String(yearKey));
-}
+  unsubTrackers = onSnapshot(q, (snap) => {
+    trackers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    trackersById = new Map(trackers.map(t => [t.id, t]));
+    if (!initialSnapshotSeen) initialSnapshotSeen = true;
 
-function subscribeYears(uid) {
-  if (typeof unsubscribeYears === "function") {
-    try { unsubscribeYears(); } catch { /* ignore */ }
-  }
-
-  unsubscribeYears = onSnapshot(
-    yearsCollectionRef(uid),
-    async (snap) => {
-      const years = {};
-      const yearsOrder = [];
-
-      for (const d of snap.docs) {
-        const yearKey = String(d.id);
-        const data = d.data() || {};
-        const books = (data.books && typeof data.books === "object") ? data.books : {};
-        years[yearKey] = books;
-
-        const yNum = Number(yearKey);
-        if (Number.isFinite(yNum)) yearsOrder.push(yNum);
-      }
-
-      yearsOrder.sort((a, b) => a - b);
-      remote = { yearsOrder, years };
-
-      // If currentYear was deleted remotely -> go back to years
-      if (currentYear && !remote.years[currentYear]) {
-        currentYear = null;
-        currentBookId = null;
-        setView("years");
-      }
-
-      // First-time restore (after we have year list)
-      if (!restoredAfterRemote) {
-        restoredAfterRemote = true;
-        restoreUiLocation();
-      }
-
-      refreshCurrentView();
-    },
-    (err) => {
-      console.error("Firestore subscribe error:", err);
-      // still try to render what we have (likely empty)
-      refreshCurrentView();
-    }
-  );
-}
-
-function refreshCurrentView() {
-  if (currentView === "years") {
-    renderYears();
-    return;
-  }
-  if (currentView === "year") {
-    if (!currentYear) {
-      setView("years");
-      renderYears();
+    // Restore last page once after the first snapshot (unless the user already navigated).
+    if (!requestedNavApplied && currentView === "trackers") {
+      applyRequestedNavigation();
       return;
     }
-    renderYear(currentYear);
-    return;
-  }
-  if (currentView === "book") {
-    if (!currentYear || !currentBookId) {
-      setView("years");
-      renderYears();
-      return;
-    }
-    renderBook();
-  }
+
+    normalizeNavigationAfterData();
+    renderCurrentView();
+  }, (err) => {
+    console.error("Firestore subscribe error:", err);
+  });
 }
 
-function restoreUiLocation() {
-  const desiredView = ui.view || "years";
-  const y = ui.currentYear ? String(ui.currentYear) : null;
-  const b = ui.currentBookId ? String(ui.currentBookId) : null;
+function applyRequestedNavigation() {
+  requestedNavApplied = true;
 
-  if (desiredView === "book" && y && b && remote.years[y]) {
-    currentYear = y;
-    currentBookId = b;
-    setView("book");
-    renderBook();
-    allowUiPersist = true;
-    persistUiLocation();
-    return;
-  }
+  const v = String(requestedNav.view || "trackers");
+  const tid = requestedNav.trackerId;
+  const bid = requestedNav.bookId;
 
-  if ((desiredView === "year" || desiredView === "book") && y && remote.years[y]) {
-    currentYear = y;
+  if (v === "tracker" && tid && trackersById.has(tid)) {
+    currentTrackerId = tid;
     currentBookId = null;
-    setView("year");
-    renderYear(y);
-    allowUiPersist = true;
-    persistUiLocation();
+    const t = trackersById.get(tid);
+    if (t && t.color) ui.lastTrackerColor = t.color;
+    setView("tracker");
     return;
   }
 
-  currentYear = null;
+  if (v === "book" && tid && bid && trackersById.has(tid)) {
+    const t = trackersById.get(tid);
+    const ids = normalizeBookIds(t.bookIds);
+    if (ids.includes(bid)) {
+      currentTrackerId = tid;
+      currentBookId = bid;
+      if (t && t.color) ui.lastTrackerColor = t.color;
+      setView("book");
+      return;
+    }
+  }
+
+  // Fallback
+  currentTrackerId = null;
   currentBookId = null;
-  setView("years");
-  renderYears();
-  allowUiPersist = true;
-  persistUiLocation();
+  setView("trackers");
 }
 
-function persistUiLocation() {
-  ui.view = currentView;
-  ui.currentYear = currentYear;
-  ui.currentBookId = currentBookId;
+function normalizeNavigationAfterData() {
+  // If we were on tracker/book but tracker is gone, go home
+  if ((currentView === "tracker" || currentView === "book") && currentTrackerId) {
+    if (!trackersById.has(currentTrackerId)) {
+      currentTrackerId = null;
+      currentBookId = null;
+      currentView = "trackers";
+    }
+  }
+
+  if (currentView === "book") {
+    const t = getCurrentTracker();
+    if (!t) {
+      currentView = "trackers";
+      currentTrackerId = null;
+      currentBookId = null;
+    } else {
+      const ids = Array.isArray(t.bookIds) ? t.bookIds : [];
+      if (!currentBookId || !ids.includes(currentBookId)) {
+        currentBookId = null;
+        currentView = "tracker";
+      }
+    }
+  }
+
   saveUiState();
 }
 
-function setView(v) {
+function setView(v, opts = {}) {
+  const { skipSave = false, skipRender = false } = opts;
   currentView = v;
 
-  viewYears.classList.toggle("hidden", v !== "years");
-  viewYear.classList.toggle("hidden", v !== "year");
+  viewTrackers.classList.toggle("hidden", v !== "trackers");
+  viewAddTracker.classList.toggle("hidden", v !== "add");
+  viewTracker.classList.toggle("hidden", v !== "tracker");
   viewBook.classList.toggle("hidden", v !== "book");
 
-  btnBack.classList.toggle("hidden", v === "years");
+  // Back button: show for tracker + book (not for add, because it has bottom cancel)
+  btnBack.classList.toggle("hidden", v === "trackers" || v === "add");
 
-  // Only on main page
-  btnAddYear.classList.toggle("hidden", v !== "years");
-  btnLogout.classList.toggle("hidden", v !== "years");
+  // Only on home
+  btnAddTracker.classList.toggle("hidden", v !== "trackers");
+  btnLogout.classList.toggle("hidden", v !== "trackers");
 
-  if (allowUiPersist) persistUiLocation();
-  updateTopbar();
-}
-
-function updateTopbar() {
-  // Title always "NT 365"
-  topTitle.textContent = "NT 365";
-
-  // Defaults: years overview -> transparent bar
-  let pct = 0;
-  let barStrong = "transparent";
-  let barSoft = "transparent";
-  let btnYearSoft = "transparent";
-  topSub.textContent = "";
-
-  if (currentView === "year" && currentYear) {
-    const yPct = Math.round(yearProgress(currentYear) * 100);
-    const doneBooks = booksCompletedCount(currentYear);
-    const rgb = yearRgbFor(Number(currentYear));
-    pct = yPct;
-    barStrong = rgba(rgb, STRONG_A);
-    barSoft = rgba(rgb, SOFT_A);
-    btnYearSoft = barSoft;
-    topSub.textContent = `${currentYear} · ${doneBooks}/27 · ${yPct}%`;
-  } else if (currentView === "book" && currentYear && currentBookId) {
-    const b = BOOKS.find(x => x.id === currentBookId);
-    const short = b ? (BOOK_SHORT[b.id] || b.name) : "Buch";
-    const read = b ? getReadSet(currentYear, currentBookId).size : 0;
-    const total = b ? b.chapters : 0;
-    const bPct = total ? Math.round((read / total) * 100) : 0;
-
-    const rgb = yearRgbFor(Number(currentYear));
-    pct = bPct;
-    barStrong = rgba(rgb, STRONG_A);
-    barSoft = rgba(rgb, SOFT_A);
-    btnYearSoft = barSoft;
-    topSub.textContent = `${currentYear} · ${short} · ${read}/${total} · ${bPct}%`;
-  }
-
-  // + and logout button color (years view only): last clicked year in SOFT
-  let addSoft = "var(--btnBg)";
-  if (currentView === "years") {
-    const y = ui.lastYear ? Number(ui.lastYear) : null;
-    if (Number.isFinite(y)) addSoft = rgba(yearRgbFor(y), SOFT_A);
-  }
-
-  topbar.style.setProperty("--barStrong", barStrong);
-  topbar.style.setProperty("--barSoft", barSoft);
-  topbar.style.setProperty("--barPct", `${pct}%`);
-  appEl.style.setProperty("--btnYearSoft", btnYearSoft);
-  appEl.style.setProperty("--addSoft", addSoft);
+  if (!skipSave) saveUiState();
+  if (!skipRender) renderCurrentView();
 }
 
 function goBack() {
   if (currentView === "book") {
     currentBookId = null;
-    setView("year");
-    renderYear(currentYear);
+    setView("tracker");
     return;
   }
-  if (currentView === "year") {
-    currentYear = null;
-    setView("years");
-    renderYears();
+  if (currentView === "tracker") {
+    currentTrackerId = null;
+    setView("trackers");
   }
 }
 
-function rgba([r,g,b], a) {
-  return `rgba(${r}, ${g}, ${b}, ${a})`;
+function renderCurrentView() {
+  if (!currentUser) return;
+
+  if (currentView === "trackers") renderTrackers();
+  else if (currentView === "add") renderAddTrackerView();
+  else if (currentView === "tracker") renderTracker();
+  else if (currentView === "book") renderBook();
+
+  updateTopbar();
 }
 
-// Deterministic year color, avoid pink/magenta band.
-function yearRgbFor(yearNumber) {
-  const y = Number(yearNumber);
-  let hue = ((y * 137.508) % 360 + 360) % 360;
+// --- Topbar ---
+function updateTopbar() {
+  let pct = 0;
+  let barStrong = "transparent";
+  let barSoft = "transparent";
+  let btnSoft = "transparent";
 
-  // Avoid pink/magenta (roughly 285..345°)
-  if (hue >= 285 && hue <= 345) hue = (hue + 180) % 360;
+  const tracker = getCurrentTracker();
 
-  return hslToRgb(hue, 72, 72);
-}
+  if (currentView === "trackers") {
+    topTitle.textContent = "NT 365";
+    topSub.textContent = "";
+  } else if (currentView === "add") {
+    topTitle.textContent = "Tracker hinzufügen";
+    topSub.textContent = "";
+  } else if (currentView === "tracker" && tracker) {
+    const st = trackerStats(tracker);
+    topTitle.textContent = String(tracker.name || "Tracker");
+    topSub.textContent = `${trackerYear(tracker)} · ${st.doneBooks}/${st.totalBooks} · ${st.pct}%`;
 
-function hslToRgb(h, s, l) {
-  s /= 100;
-  l /= 100;
+    const rgb = hexToRgb(tracker.color || ui.lastTrackerColor || "#cccccc");
+    pct = st.pct;
+    barStrong = rgba(rgb, STRONG_A);
+    barSoft = rgba(rgb, SOFT_A);
+    btnSoft = barSoft;
+  } else if (currentView === "book" && tracker && currentBookId) {
+    const b = BOOK_BY_ID.get(currentBookId);
+    const read = getReadSet(tracker, currentBookId).size;
+    const total = b ? b.chapters : 0;
+    const bpct = total ? Math.round((read / total) * 100) : 0;
 
-  const c = (1 - Math.abs(2*l - 1)) * s;
-  const hh = h / 60;
-  const x = c * (1 - Math.abs((hh % 2) - 1));
-  let r1=0, g1=0, b1=0;
+    topTitle.textContent = String(tracker.name || "Tracker");
+    topSub.textContent = `${trackerYear(tracker)} · ${(b && b.short) ? b.short : "Buch"} · ${read}/${total} · ${bpct}%`;
 
-  if (0 <= hh && hh < 1) [r1,g1,b1] = [c,x,0];
-  else if (1 <= hh && hh < 2) [r1,g1,b1] = [x,c,0];
-  else if (2 <= hh && hh < 3) [r1,g1,b1] = [0,c,x];
-  else if (3 <= hh && hh < 4) [r1,g1,b1] = [0,x,c];
-  else if (4 <= hh && hh < 5) [r1,g1,b1] = [x,0,c];
-  else if (5 <= hh && hh < 6) [r1,g1,b1] = [c,0,x];
-
-  const m = l - c/2;
-  const r = Math.round((r1 + m) * 255);
-  const g = Math.round((g1 + m) * 255);
-  const b = Math.round((b1 + m) * 255);
-  return [r,g,b];
-}
-
-async function addYearFlow() {
-  const input = prompt("Jahr hinzufügen (z.B. 2026):");
-  if (!input) return;
-  const y = Number(String(input).trim());
-  if (!Number.isFinite(y) || y < 1900 || y > 3000) return;
-
-  const yearKey = String(Math.trunc(y));
-  if (!currentUid) return;
-
-  // already exists -> just open it
-  if (remote.years[yearKey]) {
-    showYear(yearKey);
-    return;
+    const rgb = hexToRgb(tracker.color || ui.lastTrackerColor || "#cccccc");
+    pct = bpct;
+    barStrong = rgba(rgb, STRONG_A);
+    barSoft = rgba(rgb, SOFT_A);
+    btnSoft = barSoft;
+  } else {
+    topTitle.textContent = "NT 365";
+    topSub.textContent = "";
   }
 
-  try {
-    await setDoc(yearDocRef(currentUid, yearKey), {
-      year: Math.trunc(y),
-      books: {},
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    }, { merge: false });
-
-    // Snapshot will refresh lists. We can still navigate optimistically.
-    showYear(yearKey);
-  } catch (e) {
-    console.error("Failed to create year:", e);
-  }
-}
-
-function showYear(y) {
-  currentYear = String(y);
-  currentBookId = null;
-  ui.lastYear = currentYear;
-  saveUiState();
-  setView("year");
-  renderYear(currentYear);
-}
-
-function showBook(bookId) {
-  currentBookId = bookId;
-  setView("book");
-  renderBook();
-}
-
-function renderYears() {
-  elYearsList.innerHTML = "";
-  const years = (remote.yearsOrder || []).slice().sort((a, b) => a - b);
-
-  if (!years.length) {
-    const hint = document.createElement("div");
-    hint.className = "emptyHint";
-    hint.textContent = "Noch keine Jahre – tippe auf ＋ um ein Jahr anzulegen.";
-    elYearsList.appendChild(hint);
-    updateTopbar();
-    return;
+  // Home: + button tint = last used tracker color
+  let addSoft = "var(--btnBg)";
+  if (currentView === "trackers") {
+    const c = ui.lastTrackerColor;
+    if (c) {
+      addSoft = rgba(hexToRgb(c), SOFT_A);
+    }
   }
 
-  years.forEach((y) => {
-    const yearKey = String(y);
-    const pct = Math.round(yearProgress(yearKey) * 100);
-    const doneBooks = booksCompletedCount(yearKey);
+  topbar.style.setProperty("--barStrong", barStrong);
+  topbar.style.setProperty("--barSoft", barSoft);
+  topbar.style.setProperty("--barPct", `${pct}%`);
+  appEl.style.setProperty("--btnYearSoft", btnSoft);
+  appEl.style.setProperty("--addSoft", addSoft);
+}
 
-    const rgb = yearRgbFor(Number(y));
+// --- Home (Trackers list) ---
+function renderTrackers() {
+  elTrackersList.innerHTML = "";
+
+  emptyTrackersHint.classList.toggle("hidden", trackers.length !== 0);
+
+  trackers.forEach((t) => {
+    const st = trackerStats(t);
+    const rgb = hexToRgb(t.color || "#cccccc");
     const fillStrong = rgba(rgb, STRONG_A);
     const fillSoft = rgba(rgb, SOFT_A);
 
     const btn = document.createElement("button");
     btn.className = "yearItem tile";
     btn.type = "button";
-    btn.style.setProperty("--fillPct", `${pct}%`);
+    btn.style.setProperty("--fillPct", `${st.pct}%`);
     btn.style.setProperty("--fillStrong", fillStrong);
     btn.style.setProperty("--fillSoft", fillSoft);
 
@@ -591,77 +550,105 @@ function renderYears() {
       <div class="tileFill" aria-hidden="true"></div>
       <div class="tileContent">
         <div class="yearTop">
-          <div class="yearLabel">${y}</div>
-          <div class="yearPct">${pct}% · ${doneBooks}/27</div>
+          <div class="yearLabel">${escapeHtml(String(t.name || "Tracker"))}</div>
+          <div class="yearPct">${st.pct}% · ${st.doneBooks}/${st.totalBooks}</div>
         </div>
       </div>
     `;
-    btn.addEventListener("click", () => showYear(yearKey));
-    elYearsList.appendChild(btn);
-  });
 
-  updateTopbar();
+    btn.addEventListener("click", () => {
+      openTracker(t.id);
+    });
+
+    elTrackersList.appendChild(btn);
+  });
 }
 
-function renderYear(yearKey) {
-  booksGrid.innerHTML = "";
+function openTracker(trackerId) {
+  currentTrackerId = trackerId;
+  currentBookId = null;
 
-  const orderedBooks = [];
-  for (const groupName of GROUP_ORDER) {
-    for (const b of BOOKS) if (b.group === groupName) orderedBooks.push(b);
+  const t = trackersById.get(trackerId);
+  if (t && t.color) ui.lastTrackerColor = t.color;
+
+  saveUiState();
+  setView("tracker");
+}
+
+// --- Tracker page (books) ---
+function renderTracker() {
+  const t = getCurrentTracker();
+  if (!t) {
+    setView("trackers");
+    return;
   }
 
-  orderedBooks.forEach((b) => {
-    const pct = Math.round(bookProgress(yearKey, b.id) * 100);
+  booksGrid.innerHTML = "";
 
-    const rgb = GROUP_RGB[b.group] || [200, 200, 200];
-    const fillStrong = rgba(rgb, STRONG_A);
-    const fillSoft = rgba(rgb, SOFT_A);
+  const ids = normalizeBookIds(t.bookIds);
+  const rgb = hexToRgb(t.color || "#cccccc");
+  const fillStrong = rgba(rgb, STRONG_A);
+  const fillSoft = rgba(rgb, SOFT_A);
+
+  ids.forEach((bookId) => {
+    const b = BOOK_BY_ID.get(bookId);
+    if (!b) return;
+
+    const bp = bookProgress(t, bookId);
+    const pct = Math.round(bp * 100);
 
     const tile = document.createElement("button");
     tile.type = "button";
     tile.className = "bookTile tile";
-    tile.dataset.book = b.id;
+    tile.dataset.book = bookId;
     tile.style.setProperty("--fillPct", `${pct}%`);
     tile.style.setProperty("--fillStrong", fillStrong);
     tile.style.setProperty("--fillSoft", fillSoft);
-
-    const shortLabel = BOOK_SHORT[b.id] || b.name;
 
     tile.innerHTML = `
       <div class="tileBase" aria-hidden="true"></div>
       <div class="tileFill" aria-hidden="true"></div>
       <div class="tileContent">
-        <div class="bookShort">${escapeHtml(shortLabel)}</div>
+        <div class="bookShort">${escapeHtml(b.short || b.name)}</div>
       </div>
     `;
 
-    tile.addEventListener("click", () => showBook(b.id));
+    tile.addEventListener("click", () => {
+      openBook(bookId);
+    });
+
     booksGrid.appendChild(tile);
   });
-
-  updateTopbar();
 }
 
-function updateYearUI() {
-  if (!currentYear) return;
+function openBook(bookId) {
+  const t = getCurrentTracker();
+  if (!t) return;
 
-  const tiles = booksGrid.querySelectorAll(".bookTile");
-  tiles.forEach(tile => {
-    const bookId = tile.dataset.book;
-    const pct = Math.round(bookProgress(currentYear, bookId) * 100);
-    tile.style.setProperty("--fillPct", `${pct}%`);
-  });
+  const ids = normalizeBookIds(t.bookIds);
+  if (!ids.includes(bookId)) return;
 
-  updateTopbar();
+  currentBookId = bookId;
+  saveUiState();
+  setView("book");
 }
 
+// --- Book page (chapters) ---
 function renderBook() {
-  if (!currentYear || !currentBookId) return;
+  const t = getCurrentTracker();
+  if (!t || !currentBookId) {
+    setView("trackers");
+    return;
+  }
 
-  const b = BOOKS.find(x => x.id === currentBookId);
-  const rgb = b ? (GROUP_RGB[b.group] || [200,200,200]) : [200,200,200];
+  const b = BOOK_BY_ID.get(currentBookId);
+  if (!b) {
+    currentBookId = null;
+    setView("tracker");
+    return;
+  }
 
+  const rgb = hexToRgb(t.color || "#cccccc");
   const chStrong = rgba(rgb, STRONG_A);
   const chSoft = rgba(rgb, SOFT_A);
 
@@ -669,66 +656,299 @@ function renderBook() {
   chaptersGrid.style.setProperty("--chStrong", chStrong);
 
   chaptersGrid.innerHTML = "";
-  const readSet = getReadSet(currentYear, currentBookId);
 
-  const total = b.chapters;
-  for (let ch = 1; ch <= total; ch++) {
-    const t = document.createElement("button");
-    t.type = "button";
-    t.className = "chapterTile" + (readSet.has(ch) ? " read" : "");
-    t.dataset.ch = String(ch);
-    t.textContent = String(ch);
-    chaptersGrid.appendChild(t);
+  const readSet = getReadSet(t, currentBookId);
+  for (let ch = 1; ch <= b.chapters; ch++) {
+    const tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = "chapterTile" + (readSet.has(ch) ? " read" : "");
+    tile.dataset.ch = String(ch);
+    tile.textContent = String(ch);
+    chaptersGrid.appendChild(tile);
   }
-
-  updateBookUI();
-  updateTopbar();
 }
 
-function updateBookUI() {
-  if (!currentYear || !currentBookId) return;
+// --- Firestore writes (progress) ---
+function toggleChapter(tracker, bookId, ch) {
+  const b = BOOK_BY_ID.get(bookId);
+  if (!b) return;
+  if (ch < 1 || ch > b.chapters) return;
 
-  const readSet = getReadSet(currentYear, currentBookId);
-  chaptersGrid.querySelectorAll(".chapterTile").forEach(tile => {
-    const ch = Number(tile.dataset.ch);
-    tile.classList.toggle("read", readSet.has(ch));
-  });
+  const set = getReadSet(tracker, bookId);
+  if (set.has(ch)) set.delete(ch);
+  else set.add(ch);
 
-  updateTopbar();
+  persistBookProgress(tracker, bookId, set);
 }
 
-function booksCompletedCount(yearKey) {
-  let done = 0;
-  for (const b of BOOKS) {
-    if (getReadSet(yearKey, b.id).size >= b.chapters) done += 1;
-  }
-  return done;
+function markAllChapters(tracker, bookId) {
+  const b = BOOK_BY_ID.get(bookId);
+  if (!b) return;
+
+  const set = new Set();
+  for (let i = 1; i <= b.chapters; i++) set.add(i);
+  persistBookProgress(tracker, bookId, set);
 }
 
-function yearProgress(yearKey) {
-  const total = totalChapters();
-  let read = 0;
-  for (const b of BOOKS) read += getReadSet(yearKey, b.id).size;
-  return total === 0 ? 0 : read / total;
+function clearAllChapters(tracker, bookId) {
+  persistBookProgress(tracker, bookId, new Set());
 }
 
-function bookProgress(yearKey, bookId) {
-  const b = BOOKS.find(x => x.id === bookId);
-  if (!b) return 0;
-  const read = getReadSet(yearKey, bookId).size;
-  return b.chapters === 0 ? 0 : read / b.chapters;
-}
-
-function totalChapters() {
-  return BOOKS.reduce((sum, b) => sum + b.chapters, 0);
-}
-
-function getReadSet(yearKey, bookId) {
-  const y = remote.years && remote.years[yearKey] ? remote.years[yearKey] : {};
-  const arr = Array.isArray(y[bookId]) ? y[bookId] : [];
-  const b = BOOKS.find(x => x.id === bookId);
+function persistBookProgress(tracker, bookId, set) {
+  const b = BOOK_BY_ID.get(bookId);
   const max = b ? b.chapters : 9999;
 
+  const arr = Array.from(set)
+    .map(n => Number(n))
+    .filter(n => Number.isFinite(n) && n >= 1 && n <= max)
+    .sort((a, b2) => a - b2);
+
+  // Optimistic local update
+  const next = {
+    ...tracker,
+    progress: {
+      ...(tracker.progress && typeof tracker.progress === "object" ? tracker.progress : {}),
+      [bookId]: arr,
+    }
+  };
+  trackersById.set(tracker.id, next);
+  trackers = trackers.map(t => (t.id === tracker.id ? next : t));
+
+  // Immediately update UI
+  if (currentView === "book") renderBook();
+  if (currentView === "tracker") renderTracker();
+  if (currentView === "trackers") renderTrackers();
+  updateTopbar();
+
+  // Persist to Firestore
+  const ref = doc(db, "nt-365", currentUser.uid, "trackers", tracker.id);
+  updateDoc(ref, {
+    [`progress.${bookId}`]: arr,
+    updatedAt: serverTimestamp()
+  }).catch((err) => {
+    console.error("Firestore update failed:", err);
+  });
+}
+
+// --- Add Tracker ---
+function buildAddTrackerUiOnce() {
+  // Swatches
+  const palette = generatePalette();
+  colorSwatches.innerHTML = "";
+  palette.forEach((hex) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "swatchBtn";
+    btn.dataset.color = hex;
+    btn.style.background = hex;
+    btn.title = hex;
+    btn.setAttribute("aria-label", `Farbe ${hex}`);
+    colorSwatches.appendChild(btn);
+  });
+
+  // Book pickers
+  buildBookPickGrid(pickGridOT, BOOKS.filter(b => b.testament === "ot"));
+  buildBookPickGrid(pickGridNT, BOOKS.filter(b => b.testament === "nt"));
+
+  // Defaults
+  draftColorHex = palette[6] || "#8cc0ff";
+  setDraftScope("nt");
+  setDraftColor(draftColorHex);
+
+  trackerNameInput.value = "";
+  updateAddTrackerUI();
+}
+
+function buildBookPickGrid(container, books) {
+  container.innerHTML = "";
+  books.forEach((b) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "pickBtn";
+    btn.dataset.book = b.id;
+    btn.textContent = b.short || b.name;
+    container.appendChild(btn);
+  });
+}
+
+function openAddTracker() {
+  // Reset draft
+  draftScope = "nt";
+  draftBookIds = new Set(NT_BOOK_IDS);
+  const palette = Array.from(colorSwatches.querySelectorAll("[data-color]")).map(el => el.dataset.color);
+  draftColorHex = palette[6] || "#8cc0ff";
+
+  trackerNameInput.value = "";
+  addTrackerError.textContent = "";
+
+  updateAddTrackerUI();
+  setView("add");
+}
+
+function renderAddTrackerView() {
+  updateAddTrackerUI();
+}
+
+function setDraftScope(scope) {
+  const s = String(scope || "").toLowerCase();
+  if (!["bible", "ot", "nt", "custom"].includes(s)) return;
+  draftScope = s;
+
+  if (draftScope === "bible") draftBookIds = new Set([...OT_BOOK_IDS, ...NT_BOOK_IDS]);
+  else if (draftScope === "ot") draftBookIds = new Set(OT_BOOK_IDS);
+  else if (draftScope === "nt") draftBookIds = new Set(NT_BOOK_IDS);
+  // custom keeps current selection
+
+  updateAddTrackerUI();
+}
+
+function setDraftColor(hex) {
+  if (!isValidHexColor(hex)) return;
+  draftColorHex = hex;
+  updateAddTrackerUI();
+}
+
+function toggleDraftBook(bookId) {
+  if (!BOOK_BY_ID.has(bookId)) return;
+  if (draftBookIds.has(bookId)) draftBookIds.delete(bookId);
+  else draftBookIds.add(bookId);
+  updateAddTrackerUI();
+}
+
+function updateAddTrackerUI() {
+  // Scope buttons
+  scopeRow.querySelectorAll("[data-scope]").forEach((btn) => {
+    const on = btn.dataset.scope === draftScope;
+    btn.setAttribute("aria-checked", on ? "true" : "false");
+  });
+
+  // Book picker
+  bookPicker.classList.toggle("hidden", draftScope !== "custom");
+
+  // Book selection visual state
+  bookPicker.querySelectorAll("[data-book]").forEach((btn) => {
+    const on = draftBookIds.has(btn.dataset.book);
+    btn.classList.toggle("selected", on);
+  });
+
+  // Summary
+  const total = draftBookIds.size;
+  const of = draftScope === "bible" ? 66 : (draftScope === "ot" ? 39 : (draftScope === "nt" ? 27 : 66));
+  const label = draftScope === "bible" ? "Ganze Bibel" : (draftScope === "ot" ? "AT" : (draftScope === "nt" ? "NT" : "Bücher"));
+  booksSummary.textContent = `${label}: ${total}/${of} Bücher ausgewählt`;
+
+  // Color swatches
+  colorSwatches.querySelectorAll("[data-color]").forEach((btn) => {
+    btn.classList.toggle("selected", btn.dataset.color === draftColorHex);
+  });
+
+  // Make pills & tiles reflect draft color (nice preview)
+  const rgb = hexToRgb(draftColorHex || "#cccccc");
+  appEl.style.setProperty("--btnYearSoft", rgba(rgb, SOFT_A));
+}
+
+async function confirmAddTracker() {
+  addTrackerError.textContent = "";
+
+  const name = String(trackerNameInput.value || "").trim();
+  if (!name) {
+    addTrackerError.textContent = "Bitte einen Namen eingeben.";
+    return;
+  }
+
+  if (!draftColorHex || !isValidHexColor(draftColorHex)) {
+    addTrackerError.textContent = "Bitte eine Farbe auswählen.";
+    return;
+  }
+
+  const bookIds = normalizeBookIds(Array.from(draftBookIds));
+  if (bookIds.length < 1) {
+    addTrackerError.textContent = "Bitte mindestens ein Buch auswählen.";
+    return;
+  }
+
+  if (!currentUser) return;
+
+  try {
+    const ref = await addDoc(collection(db, "nt-365", currentUser.uid, "trackers"), {
+      name,
+      color: draftColorHex,
+      year: new Date().getFullYear(),
+      bookIds,
+      progress: {},
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    ui.lastTrackerColor = draftColorHex;
+    currentTrackerId = ref.id;
+    currentBookId = null;
+    saveUiState();
+    setView("tracker");
+  } catch (err) {
+    console.error("Tracker create failed:", err);
+    addTrackerError.textContent = "Hinzufügen fehlgeschlagen.";
+  }
+}
+
+// --- Stats helpers ---
+function trackerYear(tracker) {
+  const y = Number(tracker && tracker.year);
+  if (Number.isFinite(y) && y >= 1900 && y <= 3000) return String(y);
+  return String(new Date().getFullYear());
+}
+
+function normalizeBookIds(ids) {
+  const arr = Array.isArray(ids) ? ids : [];
+  const out = [];
+  const seen = new Set();
+  for (const id of arr) {
+    const s = String(id || "").trim();
+    if (!s) continue;
+    if (!BOOK_BY_ID.has(s)) continue;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  // Keep canonical bible order
+  const order = new Map(BOOKS.map((b, i) => [b.id, i]));
+  out.sort((a, b) => (order.get(a) ?? 9999) - (order.get(b) ?? 9999));
+  return out;
+}
+
+function trackerStats(tracker) {
+  const ids = normalizeBookIds(tracker.bookIds);
+  const totalBooks = ids.length;
+
+  let totalCh = 0;
+  let readCh = 0;
+  let doneBooks = 0;
+
+  for (const id of ids) {
+    const b = BOOK_BY_ID.get(id);
+    if (!b) continue;
+    const s = getReadSet(tracker, id);
+    totalCh += b.chapters;
+    readCh += s.size;
+    if (s.size >= b.chapters && b.chapters > 0) doneBooks += 1;
+  }
+
+  const pct = totalCh ? Math.round((readCh / totalCh) * 100) : 0;
+  return { totalBooks, doneBooks, pct, totalCh, readCh };
+}
+
+function bookProgress(tracker, bookId) {
+  const b = BOOK_BY_ID.get(bookId);
+  if (!b) return 0;
+  const read = getReadSet(tracker, bookId).size;
+  return b.chapters ? (read / b.chapters) : 0;
+}
+
+function getReadSet(tracker, bookId) {
+  const b = BOOK_BY_ID.get(bookId);
+  const max = b ? b.chapters : 9999;
+  const p = (tracker && tracker.progress && typeof tracker.progress === "object") ? tracker.progress : {};
+  const arr = Array.isArray(p[bookId]) ? p[bookId] : [];
   const s = new Set();
   for (const v of arr) {
     const n = Number(v);
@@ -737,103 +957,88 @@ function getReadSet(yearKey, bookId) {
   return s;
 }
 
-function setReadSetLocal(yearKey, bookId, set) {
-  const arr = Array.from(set).sort((a, b) => a - b);
-  remote.years = remote.years || {};
-  remote.years[yearKey] = remote.years[yearKey] || {};
-  remote.years[yearKey][bookId] = arr;
+function getCurrentTracker() {
+  if (!currentTrackerId) return null;
+  return trackersById.get(currentTrackerId) || null;
 }
 
-async function toggleChapter(yearKey, bookId, ch) {
-  if (!currentUid) return;
-  const s = getReadSet(yearKey, bookId);
-  const has = s.has(ch);
-  if (has) s.delete(ch); else s.add(ch);
-
-  // optimistic local update
-  setReadSetLocal(yearKey, bookId, s);
-
-  try {
-    await updateDoc(yearDocRef(currentUid, yearKey), {
-      [`books.${bookId}`]: has ? arrayRemove(ch) : arrayUnion(ch),
-      updatedAt: serverTimestamp()
-    });
-  } catch (e) {
-    console.error("Failed to toggle chapter:", e);
-  }
-}
-
-async function markAllChapters(yearKey, bookId) {
-  if (!currentUid) return;
-  const b = BOOKS.find(x => x.id === bookId);
-  if (!b) return;
-
-  const all = [];
-  for (let i = 1; i <= b.chapters; i++) all.push(i);
-
-  // optimistic local update
-  setReadSetLocal(yearKey, bookId, new Set(all));
-
-  try {
-    await updateDoc(yearDocRef(currentUid, yearKey), {
-      [`books.${bookId}`]: all,
-      updatedAt: serverTimestamp()
-    });
-  } catch (e) {
-    console.error("Failed to mark all chapters:", e);
-  }
-}
-
-async function clearAllChapters(yearKey, bookId) {
-  if (!currentUid) return;
-
-  // optimistic local update
-  setReadSetLocal(yearKey, bookId, new Set());
-
-  try {
-    await updateDoc(yearDocRef(currentUid, yearKey), {
-      [`books.${bookId}`]: [],
-      updatedAt: serverTimestamp()
-    });
-  } catch (e) {
-    console.error("Failed to clear chapters:", e);
-  }
-}
-
+// --- UI state persistence ---
 function loadUiState() {
   try {
-    const raw = localStorage.getItem(UI_STORAGE_KEY);
-    if (!raw) return {
-      view: "years",
-      currentYear: null,
-      currentBookId: null,
-      lastYear: null,
-    };
+    const raw = localStorage.getItem(UI_STATE_KEY);
+    if (!raw) return { view: "trackers", currentTrackerId: null, currentBookId: null, lastTrackerColor: null };
     const obj = JSON.parse(raw);
     return {
-      view: (obj && typeof obj.view === "string") ? obj.view : "years",
-      currentYear: (obj && (typeof obj.currentYear === "string" || typeof obj.currentYear === "number"))
-        ? String(obj.currentYear)
-        : null,
-      currentBookId: (obj && typeof obj.currentBookId === "string") ? obj.currentBookId : null,
-      lastYear: (obj && (typeof obj.lastYear === "string" || typeof obj.lastYear === "number"))
-        ? String(obj.lastYear)
-        : null,
+      view: typeof obj.view === "string" ? obj.view : "trackers",
+      currentTrackerId: typeof obj.currentTrackerId === "string" ? obj.currentTrackerId : null,
+      currentBookId: typeof obj.currentBookId === "string" ? obj.currentBookId : null,
+      lastTrackerColor: isValidHexColor(obj.lastTrackerColor) ? obj.lastTrackerColor : null,
     };
   } catch {
-    return {
-      view: "years",
-      currentYear: null,
-      currentBookId: null,
-      lastYear: null,
-    };
+    return { view: "trackers", currentTrackerId: null, currentBookId: null, lastTrackerColor: null };
   }
 }
 
 function saveUiState() {
-  localStorage.setItem(UI_STORAGE_KEY, JSON.stringify(ui));
+  ui.view = currentView;
+  ui.currentTrackerId = currentTrackerId;
+  ui.currentBookId = currentBookId;
+  localStorage.setItem(UI_STATE_KEY, JSON.stringify(ui));
 }
 
+// --- Color helpers ---
+function rgba([r, g, b], a) {
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+function isValidHexColor(v) {
+  return typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v);
+}
+
+function hexToRgb(hex) {
+  const h = String(hex || "").trim();
+  if (!isValidHexColor(h)) return [200, 200, 200];
+  const r = parseInt(h.slice(1, 3), 16);
+  const g = parseInt(h.slice(3, 5), 16);
+  const b = parseInt(h.slice(5, 7), 16);
+  return [r, g, b];
+}
+
+function generatePalette() {
+  const hues = [];
+  for (let h = 0; h < 360; h += 15) hues.push(h);
+  return hues.map(h => rgbToHex(hslToRgb(h, 72, 72)));
+}
+
+function rgbToHex([r, g, b]) {
+  const to = (x) => x.toString(16).padStart(2, "0");
+  return `#${to(r)}${to(g)}${to(b)}`;
+}
+
+function hslToRgb(h, s, l) {
+  s /= 100;
+  l /= 100;
+
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const hh = h / 60;
+  const x = c * (1 - Math.abs((hh % 2) - 1));
+  let r1 = 0, g1 = 0, b1 = 0;
+
+  if (0 <= hh && hh < 1) [r1, g1, b1] = [c, x, 0];
+  else if (1 <= hh && hh < 2) [r1, g1, b1] = [x, c, 0];
+  else if (2 <= hh && hh < 3) [r1, g1, b1] = [0, c, x];
+  else if (3 <= hh && hh < 4) [r1, g1, b1] = [0, x, c];
+  else if (4 <= hh && hh < 5) [r1, g1, b1] = [x, 0, c];
+  else if (5 <= hh && hh < 6) [r1, g1, b1] = [c, 0, x];
+
+  const m = l - c / 2;
+  const r = Math.round((r1 + m) * 255);
+  const g = Math.round((g1 + m) * 255);
+  const b = Math.round((b1 + m) * 255);
+  return [r, g, b];
+}
+
+// --- Misc ---
 function escapeHtml(s) {
   return String(s)
     .replaceAll("&", "&amp;")

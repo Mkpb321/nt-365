@@ -123,7 +123,7 @@ button{
 
 #btnBack{ background: #ffffff; margin-left: 8px; }
 
-#btnAddYear{ background: var(--addSoft, var(--btnBg)); }
+#btnAddTracker{ background: var(--addSoft, var(--btnBg)); }
 
 .hidden{ display: none !important; }
 .view{ padding-top: 8px; }
@@ -157,13 +157,6 @@ button{
 .years{
   display: grid;
   gap: var(--gapYears);
-}
-
-.emptyHint{
-  color: var(--muted);
-  text-align: center;
-  padding: 18px 8px;
-  font-weight: 650;
 }
 
 .yearItem{
@@ -313,6 +306,165 @@ button{
 }
 .loginBtn:active{ background: var(--tap); }
 .loginError{
+  min-height: 18px;
+  font-size: 12px;
+  color: rgba(21,19,43,.78);
+  padding: 2px 2px 0;
+}
+
+/* Empty state on home */
+.emptyHint{
+  padding: 10px 4px 0;
+  font-size: 12px;
+  color: rgba(21,19,43,.70);
+}
+
+/* Add tracker form */
+.addForm{
+  display: grid;
+  gap: 12px;
+  padding: 6px 2px 0;
+}
+
+.field{
+  display: grid;
+  gap: 8px;
+}
+
+.fieldLabel{
+  font-weight: 950;
+  letter-spacing: .2px;
+  font-size: 12px;
+  color: rgba(21,19,43,.80);
+}
+
+.textInput{
+  width: 100%;
+  border: 0;
+  background: rgba(236,232,255,.55);
+  border-radius: 12px;
+  padding: 12px 12px;
+  font-weight: 650;
+  color: var(--text);
+  outline: none;
+}
+
+.mutedLine{
+  font-size: 12px;
+  color: rgba(21,19,43,.70);
+}
+
+.scopeRow{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chipBtn{
+  background: var(--btnBg);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-weight: 950;
+  font-size: 12px;
+}
+
+.chipBtn[aria-checked="true"]{
+  background: var(--btnYearSoft, var(--btnBg));
+}
+
+.chipBtn:active{ background: var(--tap); }
+
+.swatches{
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (min-width: 420px){
+  .swatches{ grid-template-columns: repeat(12, minmax(0, 1fr)); }
+}
+
+.swatchBtn{
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  background: var(--swatch, #ece8ff);
+  position: relative;
+}
+
+.swatchBtn.selected{
+  outline: 2px solid rgba(21,19,43,.85);
+  outline-offset: 2px;
+}
+
+.bookPicker{
+  padding: 10px 10px;
+  border-radius: 14px;
+  background: rgba(236,232,255,.35);
+}
+
+.bookPickerHeader{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
+}
+
+.pickerActions{
+  display: flex;
+  gap: 8px;
+}
+
+.miniBtn{
+  background: rgba(21,19,43,.08);
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-weight: 950;
+  font-size: 12px;
+}
+
+.miniBtn:active{ background: var(--tap); }
+
+.bookPickSection{
+  padding-top: 8px;
+}
+
+.sectionTitle{
+  font-size: 12px;
+  font-weight: 950;
+  color: rgba(21,19,43,.75);
+  padding: 0 0 8px;
+}
+
+.pickGrid{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+@media (min-width: 420px){
+  .pickGrid{ grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+.pickBtn{
+  background: rgba(21,19,43,.08);
+  border-radius: 10px;
+  padding: 8px 8px;
+  font-weight: 950;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pickBtn.selected{
+  background: var(--btnYearSoft, var(--btnBg));
+}
+
+.pickBtn:active{ background: var(--tap); }
+
+.formError{
   min-height: 18px;
   font-size: 12px;
   color: rgba(21,19,43,.78);
