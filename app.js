@@ -327,9 +327,9 @@ function startAppOnce() {
   });
 
   btnEpic.addEventListener("click", () => {
-    ui.epic = !ui.epic;
-    saveUiState();
-    updateTopbar();
+    const prev = getEpicModeLevel();
+    const next = prev === 0 ? 1 : (prev === 1 ? 2 : 0);
+    setEpicModeLevel(next, { source: "user" });
   });
 
   btnBack.addEventListener("click", goBack);
@@ -347,7 +347,7 @@ const clearPressedChapter = () => {
 chaptersGrid.addEventListener("pointerdown", (e) => {
   const tile = e.target.closest("[data-ch]");
   if (!tile) return;
-  if (!ui.epic) return;
+  if (!isEpicEnabled()) return;
   pressedChapterTile = tile;
   tile.classList.add("epic-pressing");
   appEl.classList.add("epic-app-pressing");
@@ -667,12 +667,19 @@ function updateTopbar() {
   appEl.style.setProperty("--btnYearStrong", btnStrong);
   appEl.style.setProperty("--addSoft", addSoft);
 
-  // Epic toggle tint
+
+  // Epic toggle tint + label
   const epicHex = ui.lastTrackerColor || draftColorHex || "#8cc0ff";
   const ergb = hexToRgb(epicHex);
   appEl.style.setProperty("--epcSoft", rgba(ergb, SOFT_A));
   appEl.style.setProperty("--epcStrong", rgba(ergb, STRONG_A));
-  if (btnEpic) btnEpic.setAttribute("aria-pressed", ui.epic ? "true" : "false");
+
+  const lvl = getEpicModeLevel();
+  if (btnEpic) {
+    btnEpic.setAttribute("aria-pressed", lvl > 0 ? "true" : "false");
+    btnEpic.textContent = (lvl >= 2) ? "more epic" : "epic";
+    btnEpic.classList.toggle("moreEpic", lvl >= 2);
+  }
 }
 
 // --- Home (Trackers list) ---
@@ -831,6 +838,17 @@ function ensureFxLayer() {
   canvas.setAttribute("aria-hidden", "true");
   document.body.appendChild(canvas);
 
+  // Laser grid + slam overlays (DOM-based)
+  const grid = document.createElement("div");
+  grid.className = "laserGrid";
+  grid.setAttribute("aria-hidden", "true");
+  document.body.appendChild(grid);
+
+  const slamLayer = document.createElement("div");
+  slamLayer.className = "epic-slam-layer";
+  slamLayer.setAttribute("aria-hidden", "true");
+  document.body.appendChild(slamLayer);
+
   const ctx = canvas.getContext("2d");
   const particles = [];
   let rafId = 0;
@@ -877,13 +895,59 @@ function ensureFxLayer() {
       const life = 1 - (p.age / p.ttl);
       const a = Math.max(0, Math.min(1, life));
 
-      ctx.save();
-      ctx.globalAlpha = a;
-      ctx.translate(p.x, p.y);
-      ctx.rotate(p.rot);
-      ctx.fillStyle = p.color;
-      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-      ctx.restore();
+      if (p.type === "laser") {
+        const sp = Math.max(1, Math.hypot(p.vx, p.vy));
+        const ux = p.vx / sp;
+        const uy = p.vy / sp;
+        const ex = p.x - ux * p.len;
+        const ey = p.y - uy * p.len;
+
+        ctx.save();
+        ctx.globalAlpha = a;
+        ctx.globalCompositeOperation = "lighter";
+
+        const grad = ctx.createLinearGradient(p.x, p.y, ex, ey);
+        grad.addColorStop(0, p.color);
+        grad.addColorStop(1, "rgba(255,255,255,0)");
+
+        // Glow pass (motion blur-ish)
+        ctx.lineWidth = p.w * 2.4;
+        ctx.strokeStyle = grad;
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = p.color;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+
+        // Core pass
+        ctx.shadowBlur = 0;
+        ctx.lineWidth = p.w;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        // Confetti with a small velocity trail (fake motion blur)
+        const trail = Math.min(0.07, 0.02 + Math.hypot(p.vx, p.vy) / 7000);
+
+        ctx.save();
+        ctx.globalAlpha = a * 0.35;
+        ctx.translate(p.x - p.vx * trail, p.y - p.vy * trail);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+
+        ctx.save();
+        ctx.globalAlpha = a;
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      }
     }
 
     if (particles.length) {
@@ -977,12 +1041,83 @@ function ensureFxLayer() {
     start();
   };
 
-  FX = { burst, storm, resize };
+
+  const lasers = (x, y, opts = {}) => {
+    const {
+      count = 10,
+      palette = ["#fff"],
+      power = 1,
+      ttl = 0.55,
+      spread = 1,
+      width = 2,
+      length = 180,
+      gravity = 0,
+    } = opts;
+
+    for (let i = 0; i < count; i++) {
+      const a = (Math.random() * Math.PI * 2) + ((Math.random() - 0.5) * 0.35 * spread);
+      const speed = (900 + Math.random() * 1400) * power;
+      const vx = Math.cos(a) * speed;
+      const vy = Math.sin(a) * speed;
+
+      const color = palette[Math.floor(Math.random() * palette.length)];
+      const pttl = ttl + (Math.random() * 0.22);
+
+      particles.push({
+        type: "laser",
+        x,
+        y,
+        vx,
+        vy,
+        g: gravity,
+        w: (width + Math.random() * width * 0.6),
+        len: length * (0.75 + Math.random() * 0.7),
+        color,
+        ttl: pttl,
+        age: 0,
+        rot: 0,
+        vr: 0,
+        h: 0,
+      });
+    }
+    start();
+  };
+
+  FX = { burst, storm, lasers, resize, gridEl: grid, slamLayer };
+}
+
+
+function getEpicModeLevel() {
+  return Math.max(0, Math.min(2, Number(ui.epicLevel || 0)));
 }
 
 function isEpicEnabled() {
-  return !!ui.epic;
+  return getEpicModeLevel() > 0;
 }
+
+function isMoreEpic() {
+  return getEpicModeLevel() >= 2;
+}
+
+
+function setEpicModeLevel(level, { source = "code" } = {}) {
+  const next = Math.max(0, Math.min(2, Math.round(Number(level) || 0)));
+  const prev = getEpicModeLevel();
+  if (prev === next) return;
+
+  ui.epicLevel = next;
+  ui.epic = next > 0; // legacy mirror
+  saveUiState();
+  updateTopbar();
+
+  // More Epic activation: dramatic button "camera zoom" + satirical overlays.
+  if (source === "user" && prev === 1 && next === 2) {
+    epicDramaticZoomTo(btnEpic);
+    epicSlamOverlay({ count: 3, intensity: 1.0, text: "EPIC" });
+    epicFlashLaserGrid({ intensity: 0.9, duration: 520 });
+  }
+}
+
 
 function lockEpic(ms) {
   if (!isEpicEnabled()) return;
@@ -1057,16 +1192,21 @@ function wouldCompleteTracker(tracker, bookId, newSetForBook) {
 }
 
 function epicAppHit(level) {
-  // subtle global punch; stronger on escalation
-  const cls = level >= 4 ? "epic-app-mega" : "epic-app-hit";
-  appEl.classList.remove("epic-app-hit", "epic-app-mega");
+  // subtle global punch; stronger on escalation (and stronger again in MORE EPIC)
+  const more = isMoreEpic();
+  const cls = level >= 4
+    ? (more ? "epic-app-mega-more" : "epic-app-mega")
+    : (more ? "epic-app-hit-more" : "epic-app-hit");
+
+  appEl.classList.remove("epic-app-hit", "epic-app-mega", "epic-app-hit-more", "epic-app-mega-more");
   // restart animation
   void appEl.offsetWidth;
   appEl.classList.add(cls);
   window.setTimeout(() => {
-    appEl.classList.remove("epic-app-hit", "epic-app-mega");
-  }, 650);
+    appEl.classList.remove("epic-app-hit", "epic-app-mega", "epic-app-hit-more", "epic-app-mega-more");
+  }, 700);
 }
+
 
 function epicBookFinishBoost(originTile, { trackerColor = "#8cc0ff", bookRgb = [200, 200, 200], didCompleteTracker = false } = {}) {
   // A "bigger than chapter" blast on book completion.
@@ -1093,14 +1233,38 @@ function epicBookFinishBoost(originTile, { trackerColor = "#8cc0ff", bookRgb = [
 
   // Extra halo ring
   epicHaloAt(x, y, bookRgb, didCompleteTracker ? 4 : 2, false);
+
+  // MORE EPIC: additional lasers + EPIC slams + grid pulse
+  if (isMoreEpic()) {
+    epicFlashLaserGrid({ intensity: didCompleteTracker ? 1.0 : 0.7, duration: didCompleteTracker ? 680 : 520 });
+    epicSlamOverlay({ count: didCompleteTracker ? 5 : 3, intensity: didCompleteTracker ? 1.5 : 1.2, text: "EPIC" });
+
+    FX.lasers(x, y, {
+      count: didCompleteTracker ? 28 : 18,
+      palette,
+      power: didCompleteTracker ? 1.35 : 1.2,
+      ttl: didCompleteTracker ? 0.72 : 0.6,
+      spread: 1.35,
+      width: didCompleteTracker ? 2.6 : 2.1,
+      length: didCompleteTracker ? 320 : 280,
+    });
+  }
 }
+
 
 function epicBurstTile(tile, { level = 1, trackerColor = "#8cc0ff", bookRgb = [200, 200, 200], wave = false } = {}) {
   ensureFxLayer();
+
+  const more = isMoreEpic();
+
   // Combined pop+shake animation (single transform animation so it doesn't get overridden)
-  tile.classList.remove("epic-burst", "epic-burst-soft");
+  tile.classList.remove("epic-burst", "epic-burst-soft", "epic-burst-more", "epic-burst-soft-more");
   void tile.offsetWidth;
-  tile.classList.add(wave ? "epic-burst-soft" : "epic-burst");
+  tile.classList.add(
+    wave
+      ? (more ? "epic-burst-soft-more" : "epic-burst-soft")
+      : (more ? "epic-burst-more" : "epic-burst")
+  );
 
   const rect = tile.getBoundingClientRect();
   const x = rect.left + rect.width / 2;
@@ -1118,30 +1282,136 @@ function epicBurstTile(tile, { level = 1, trackerColor = "#8cc0ff", bookRgb = [2
     "rgb(255, 240, 120)",
   ];
 
-  // Escalation: chapter -> book -> tracker
-  const count = wave
+  // Escalation: chapter -> book -> tracker (+ MORE EPIC multiplier)
+  const baseCount = wave
     ? (level >= 4 ? 14 : (level >= 2 ? 10 : 8))
     : (level >= 4 ? 160 : (level >= 2 ? 85 : 42));
 
-  const power = wave ? 0.62 : (level >= 4 ? 1.65 : (level >= 2 ? 1.3 : 1.08));
-  const spread = wave ? 0.9 : (level >= 4 ? 1.35 : (level >= 2 ? 1.22 : 1.05));
-  const gravity = level >= 4 ? 2800 : (level >= 2 ? 2500 : 2300);
-  const size = wave ? 0.85 : (level >= 4 ? 1.2 : (level >= 2 ? 1.05 : 1.0));
-  const ttl = wave ? 0.95 : (level >= 4 ? 1.35 : (level >= 2 ? 1.2 : 1.05));
+  const modeMult = more ? 1.55 : 1.0;
+  const tierMult = level >= 4 ? 1.35 : (level >= 2 ? 1.18 : 1.0);
+  const waveMult = wave ? 0.72 : 1.0;
+  const mult = modeMult * tierMult * waveMult;
+
+  const count = Math.round(baseCount * (more ? 1.25 : 1.0));
+  const power = (wave ? 0.62 : (level >= 4 ? 1.65 : (level >= 2 ? 1.3 : 1.08))) * mult;
+  const spread = (wave ? 0.9 : (level >= 4 ? 1.35 : (level >= 2 ? 1.22 : 1.05))) * (more ? 1.18 : 1.0);
+  const gravity = (level >= 4 ? 2800 : (level >= 2 ? 2500 : 2300)) * (more ? 1.12 : 1.0);
+  const size = (wave ? 0.85 : (level >= 4 ? 1.2 : (level >= 2 ? 1.05 : 1.0))) * (more ? 1.12 : 1.0);
+  const ttl = (wave ? 0.95 : (level >= 4 ? 1.35 : (level >= 2 ? 1.2 : 1.05))) * (more ? 1.1 : 1.0);
 
   FX.burst(x, y, { count, palette, power, gravity, spread, size, ttl });
+
+  // MORE EPIC: lasers + overlays + grid
+  if (more) {
+    const laserCount = wave
+      ? (level >= 4 ? 6 : (level >= 2 ? 4 : 3))
+      : (level >= 4 ? 22 : (level >= 2 ? 14 : 9));
+
+    FX.lasers(x, y, {
+      count: laserCount,
+      palette,
+      power: (level >= 4 ? 1.25 : (level >= 2 ? 1.1 : 0.95)) * (wave ? 0.7 : 1.0),
+      ttl: wave ? 0.35 : (level >= 4 ? 0.65 : 0.52),
+      spread: wave ? 0.9 : 1.25,
+      width: wave ? 1.2 : (level >= 4 ? 2.4 : 2.0),
+      length: wave ? 120 : (level >= 4 ? 300 : 240),
+    });
+
+    if (!wave) {
+      const slamCount = level >= 4 ? 3 : (level >= 2 ? 2 : 1);
+      epicSlamOverlay({ count: slamCount, intensity: level >= 4 ? 1.25 : (level >= 2 ? 1.05 : 0.9), text: "EPIC" });
+
+      // Small grid flash for the bigger moments
+      if (level >= 2) {
+        epicFlashLaserGrid({ intensity: level >= 4 ? 0.9 : 0.55, duration: level >= 4 ? 520 : 320 });
+      }
+    }
+  }
 }
 
 function epicHaloAt(x, y, rgb, level, wave) {
+  const more = isMoreEpic();
+
   const halo = document.createElement("div");
-  halo.className = "epic-halo-screen";
+  halo.className = more ? "epic-halo-screen epic-halo-more" : "epic-halo-screen";
   halo.style.left = `${x}px`;
   halo.style.top = `${y}px`;
-  halo.style.borderColor = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${wave ? 0.55 : 0.85})`;
-  halo.style.setProperty("--haloScale", String(level >= 4 ? 12 : (level >= 2 ? 9 : 7)));
+
+  const alpha = wave ? 0.55 : 0.88;
+  halo.style.borderColor = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
+
+  const base = level >= 4 ? 12 : (level >= 2 ? 9 : 7);
+  const scale = base * (more ? 1.35 : 1.0) * (wave ? 0.92 : 1.0);
+  halo.style.setProperty("--haloScale", String(scale));
+  halo.style.setProperty("--haloStroke", more ? "4px" : "3px");
+
   document.body.appendChild(halo);
   halo.addEventListener("animationend", () => halo.remove(), { once: true });
 }
+
+
+
+function epicFlashLaserGrid({ intensity = 0.6, duration = 320 } = {}) {
+  ensureFxLayer();
+  const grid = FX && FX.gridEl;
+  if (!grid) return;
+
+  grid.style.setProperty("--gridA", String(Math.max(0, Math.min(1, intensity))));
+  grid.style.setProperty("--gridDur", `${Math.max(120, Math.round(duration))}ms`);
+
+  grid.classList.remove("on");
+  // restart animation
+  void grid.offsetWidth;
+  grid.classList.add("on");
+}
+
+function epicSlamOverlay({ count = 1, intensity = 1.0, text = "EPIC" } = {}) {
+  ensureFxLayer();
+  const layer = FX && FX.slamLayer;
+  if (!layer) return;
+
+  const n = Math.max(1, Math.min(18, Math.round(count)));
+  const it = Math.max(0.6, Math.min(2.2, Number(intensity) || 1));
+
+  for (let i = 0; i < n; i++) {
+    const el = document.createElement("div");
+    el.className = "epic-slam";
+    el.textContent = text;
+
+    const x = 10 + Math.random() * 80;
+    const y = 10 + Math.random() * 55;
+
+    const rot = (Math.random() * 34 - 17) * it;
+    const scale = (0.9 + Math.random() * 0.55) * it;
+
+    el.style.left = `${x}%`;
+    el.style.top = `${y}%`;
+    el.style.setProperty("--slamRot", `${rot}deg`);
+    el.style.setProperty("--slamScale", String(scale));
+    el.style.setProperty("--slamDur", `${Math.round(520 + 260 * it)}ms`);
+
+    layer.appendChild(el);
+    el.addEventListener("animationend", () => el.remove(), { once: true });
+  }
+}
+
+function epicDramaticZoomTo(btnEl) {
+  if (!btnEl) return;
+
+  const br = btnEl.getBoundingClientRect();
+  const ar = appEl.getBoundingClientRect();
+  const ox = (br.left + br.width / 2) - ar.left;
+  const oy = (br.top + br.height / 2) - ar.top;
+
+  appEl.style.setProperty("--camOx", `${Math.max(0, ox)}px`);
+  appEl.style.setProperty("--camOy", `${Math.max(0, oy)}px`);
+
+  appEl.classList.remove("epic-camera-zoom");
+  void appEl.offsetWidth;
+  appEl.classList.add("epic-camera-zoom");
+  window.setTimeout(() => appEl.classList.remove("epic-camera-zoom"), 520);
+}
+
 
 function epicWaveFromTile(originTile, { level = 2, trackerColor = "#8cc0ff", bookRgb = [200, 200, 200] } = {}) {
   ensureFxLayer();
@@ -1200,6 +1470,16 @@ function epicTotalEskalation(originTile, { trackerColor = "#8cc0ff", bookRgb = [
   mkFlash();
   window.setTimeout(mkFlash, 180);
 
+  // Laser grid (Mission-Impossible vibe) + EPIC slams
+  if (isMoreEpic()) {
+    epicFlashLaserGrid({ intensity: 1.0, duration: 980 });
+    epicSlamOverlay({ count: 8, intensity: 1.8, text: "EPIC" });
+  } else {
+    // still a small grid pulse for tracker completion
+    epicFlashLaserGrid({ intensity: 0.7, duration: 520 });
+    epicSlamOverlay({ count: 4, intensity: 1.2, text: "EPIC" });
+  }
+
   // Big screen particle storm (gravity confetti)
   const o = originTile.getBoundingClientRect();
   const ox = o.left + o.width / 2;
@@ -1221,6 +1501,17 @@ function epicTotalEskalation(originTile, { trackerColor = "#8cc0ff", bookRgb = [
   // 3) "side cannons" (two extra bursts)
   // 4) big storm
   FX.burst(ox, oy, { count: 360, palette, power: 2.05, gravity: 2700, spread: 1.45, size: 1.25, ttl: 1.45 });
+
+  // Laser beams from the clicked tile
+  FX.lasers(ox, oy, {
+    count: isMoreEpic() ? 72 : 34,
+    palette,
+    power: isMoreEpic() ? 1.55 : 1.2,
+    ttl: isMoreEpic() ? 0.85 : 0.65,
+    spread: 1.4,
+    width: isMoreEpic() ? 3.0 : 2.2,
+    length: isMoreEpic() ? 420 : 320,
+  });
   window.setTimeout(() => {
     FX.burst(ox, oy, { count: 280, palette, power: 1.75, gravity: 2850, spread: 1.3, size: 1.15, ttl: 1.35 });
   }, 140);
@@ -1231,19 +1522,26 @@ function epicTotalEskalation(originTile, { trackerColor = "#8cc0ff", bookRgb = [
   }, 220);
 
   window.setTimeout(() => {
-    FX.storm({ count: 820, palette, gravity: 3200 });
+    FX.storm({ count: isMoreEpic() ? 1250 : 880, palette, gravity: isMoreEpic() ? 3600 : 3200 });
   }, 320);
 
   // Extra halos for maximum overkill
   epicHaloAt(ox, oy, bookRgb, 4, false);
   window.setTimeout(() => epicHaloAt(ox, oy, bookRgb, 4, false), 160);
 
+  if (isMoreEpic()) {
+    window.setTimeout(() => epicHaloAt(ox, oy, bookRgb, 4, false), 320);
+    window.setTimeout(() => epicHaloAt(ox, oy, bookRgb, 4, false), 520);
+  }
+
   // A short satirical banner
   const banner = document.createElement("div");
-  banner.className = "epic-banner";
+  banner.className = "epic-banner epic-banner--mega" + (isMoreEpic() ? " epic-banner--more" : "");
   banner.textContent = "TRACKER FINISHED";
+  const bannerMs = isMoreEpic() ? 7600 : 5600;
+  banner.style.setProperty("--bannerDur", `${bannerMs}ms`);
   document.body.appendChild(banner);
-  window.setTimeout(() => banner.remove(), 4600);
+  window.setTimeout(() => banner.remove(), bannerMs);
 }
 
 // --- Firestore writes (progress) ---
@@ -1567,17 +1865,35 @@ function getCurrentTracker() {
 function loadUiState() {
   try {
     const raw = localStorage.getItem(UI_STATE_KEY);
-    if (!raw) return { view: "trackers", currentTrackerId: null, currentBookId: null, lastTrackerColor: null, epic: false };
+    if (!raw) {
+      return {
+        view: "trackers",
+        currentTrackerId: null,
+        currentBookId: null,
+        lastTrackerColor: null,
+        epicLevel: 0
+      };
+    }
+
     const obj = JSON.parse(raw);
+
+    // Backward compatibility: older builds stored `epic: boolean`.
+    const legacyEpic = obj && typeof obj.epic === "boolean" ? obj.epic : false;
+    const lvl = (obj && typeof obj.epicLevel === "number")
+      ? Math.max(0, Math.min(2, Math.round(obj.epicLevel)))
+      : (legacyEpic ? 1 : 0);
+
     return {
       view: typeof obj.view === "string" ? obj.view : "trackers",
       currentTrackerId: typeof obj.currentTrackerId === "string" ? obj.currentTrackerId : null,
       currentBookId: typeof obj.currentBookId === "string" ? obj.currentBookId : null,
       lastTrackerColor: isValidHexColor(obj.lastTrackerColor) ? obj.lastTrackerColor : null,
-      epic: obj && typeof obj.epic === "boolean" ? obj.epic : false,
+      epicLevel: lvl,
+      // keep legacy field so older logic (if any remains) doesn't explode
+      epic: lvl > 0,
     };
   } catch {
-    return { view: "trackers", currentTrackerId: null, currentBookId: null, lastTrackerColor: null, epic: false };
+    return { view: "trackers", currentTrackerId: null, currentBookId: null, lastTrackerColor: null, epicLevel: 0, epic: false };
   }
 }
 
@@ -1585,6 +1901,8 @@ function saveUiState() {
   ui.view = currentView;
   ui.currentTrackerId = currentTrackerId;
   ui.currentBookId = currentBookId;
+  // keep legacy flag in sync
+  ui.epic = getEpicModeLevel() > 0;
   localStorage.setItem(UI_STATE_KEY, JSON.stringify(ui));
 }
 
