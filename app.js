@@ -197,7 +197,7 @@ const btnMenu = $("#btnMenu");
 
 // Burger menu
 const menuOverlay = $("#menuOverlay");
-const menuEpic = $("#menuEpic");
+const btnMenuEpic = $("#btnMenuEpic");
 const btnMenuLogout = $("#btnMenuLogout");
 
 const viewTrackers = $("#viewTrackers");
@@ -368,23 +368,13 @@ function startAppOnce() {
     if (e.key === "Escape") closeMenu();
   });
 
-  menuEpic.addEventListener("change", () => {
-    // IMPORTANT: toggling epic in the menu must NOT close the menu.
-    const prev = getEpicModeLevel();
-    const next = menuEpic.checked ? (prev === 2 ? 2 : 1) : 0;
-    setEpicModeLevel(next, { source: "user" });
-  });
-
-  // Keep cycling 0 -> 1 -> 2 -> 0 via long-press gesture (optional): tap on label area
-  // (Allows the existing "more epic" mode without adding another UI control.)
-  const menuEpicRow = menuEpic.closest(".menuRow");
-  if (menuEpicRow) {
-    menuEpicRow.addEventListener("contextmenu", (e) => e.preventDefault());
-    menuEpicRow.addEventListener("dblclick", () => {
+  // Epic button: three levels (0 -> 1 -> 2 -> 0). Must NOT close the menu.
+  if (btnMenuEpic) {
+    btnMenuEpic.addEventListener("click", () => {
       const prev = getEpicModeLevel();
       const next = prev === 0 ? 1 : (prev === 1 ? 2 : 0);
       setEpicModeLevel(next, { source: "user" });
-      menuEpic.checked = next > 0;
+      updateMenuEpicLabel();
     });
   }
 
@@ -670,7 +660,7 @@ function setView(v, opts = {}) {
   // Only on home
   btnAddTracker.classList.toggle("hidden", v !== "trackers");
   btnEditTracker.classList.toggle("hidden", v !== "tracker");
-  btnMenu.classList.remove("hidden");
+  btnMenu.classList.toggle("hidden", v !== "trackers");
 
   if (!skipSave) saveUiState();
   if (!skipRender) renderCurrentView();
@@ -907,6 +897,7 @@ function renderYearProgress(tracker) {
   const c = tracker.color || ui.lastTrackerColor || "#849eeb";
   const rgb = hexToRgb(c);
   appEl.style.setProperty("--yearStrong", rgba(rgb, STRONG_A));
+  appEl.style.setProperty("--yearSoft", rgba(rgb, SOFT_A));
   yearProgressFill.style.width = `${pct}%`;
 }
 
@@ -1280,6 +1271,7 @@ function setEpicModeLevel(level, { source = "code" } = {}) {
   ui.epic = next > 0; // legacy mirror
   saveUiState();
   updateTopbar();
+  updateMenuEpicLabel();
 
   // More Epic activation: dramatic button "camera zoom" + satirical overlays.
   if (source === "user" && prev === 1 && next === 2) {
@@ -1767,7 +1759,9 @@ function epicTotalEskalation(originTile, { trackerColor = "#8cc0ff", bookRgb = [
   banner.style.setProperty("--bannerDur", `${bannerMs}ms`);
   document.body.appendChild(banner);
   window.setTimeout(() => banner.remove(), bannerMs);
-} (progress) ---
+}
+
+// --- (progress) ---
 function toggleChapter(tracker, bookId, ch) {
   const b = BOOK_BY_ID.get(bookId);
   if (!b) return;
@@ -2285,13 +2279,20 @@ function applyAuthTheme() {
   const rgb = hexToRgb(c);
   document.documentElement.style.setProperty("--authSoft", rgba(rgb, SOFT_A));
   document.documentElement.style.setProperty("--authSuperSoft", rgba(rgb, SUPERSOFT_A));
+  document.documentElement.style.setProperty("--authStrong", rgba(rgb, STRONG_A));
+}
+
+function updateMenuEpicLabel() {
+  if (!btnMenuEpic) return;
+  const lvl = getEpicModeLevel();
+  btnMenuEpic.textContent = lvl === 0 ? "Epic: Aus" : (lvl === 1 ? "Epic: An" : "Epic: Mehr");
 }
 
 function openMenu() {
   if (!menuOverlay) return;
   menuOverlay.classList.remove("hidden");
   menuOverlay.setAttribute("aria-hidden", "false");
-  if (menuEpic) menuEpic.checked = getEpicModeLevel() > 0;
+  updateMenuEpicLabel();
 }
 
 function closeMenu() {

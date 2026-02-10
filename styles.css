@@ -316,7 +316,19 @@ button{
   padding: 12px 12px;
   font-weight: 950;
 }
-.loginBtn:active{ filter: none; }
+.loginBtn:active{ background: var(--authStrong, var(--authSoft, var(--btnBg))); filter: none; }
+
+/* Prevent Chrome autofill from overriding our themed background */
+.loginInput:-webkit-autofill,
+.loginInput:-webkit-autofill:hover,
+.loginInput:-webkit-autofill:focus,
+.loginInput:-webkit-autofill:active{
+  -webkit-text-fill-color: var(--text);
+  transition: background-color 99999s ease-out 0s;
+  -webkit-box-shadow: 0 0 0 1000px var(--authSuperSoft, rgba(236,232,255,.55)) inset;
+  box-shadow: 0 0 0 1000px var(--authSuperSoft, rgba(236,232,255,.55)) inset;
+  caret-color: var(--text);
+}
 
 /* Burger menu */
 .menuOverlay{
@@ -376,7 +388,7 @@ button{
 .yearProgress{
   height: 10px;
   border-radius: 999px;
-  background: rgba(21,19,43,.08);
+  background: var(--yearSoft, rgba(21,19,43,.08));
   overflow: hidden;
   margin: 0px 0px 8px;
 }

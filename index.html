@@ -62,14 +62,7 @@
     <div class="menuOverlay hidden" id="menuOverlay" aria-hidden="true">
       <div class="menuPanel" role="dialog" aria-label="Menü" aria-modal="true">
         <div class="menuList">
-          <label class="menuRow" for="menuEpic">
-            <span class="menuText">Epic</span>
-            <span class="switch">
-              <input id="menuEpic" type="checkbox" />
-              <span class="switchTrack" aria-hidden="true"></span>
-              <span class="switchThumb" aria-hidden="true"></span>
-            </span>
-          </label>
+          <button class="menuBtn" id="btnMenuEpic" type="button">Epic: Aus</button>
 
           <button class="menuBtn" id="btnMenuLogout" type="button">Abmelden</button>
         </div>
@@ -153,7 +146,7 @@
         <div class="field">
           <label class="checkRow">
             <input id="editYearly" type="checkbox" />
-            <span>Jährlich</span>
+            <span class="hasTip" title="Zeigt, wie viel Prozent des aktuellen Kalenderjahres bereits vergangen sind.">Zeitfortschritt des Kalenderjahres</span>
           </label>
         </div>
 
